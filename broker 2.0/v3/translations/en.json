@@ -1,0 +1,21 @@
+{
+    "common": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "loading": "Loading..."
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "transactions": "Transactions",
+        "import": "Import (Postgres)",
+        "settings": "Settings"
+    },
+    "import": {
+        "title": "Transaction Import",
+        "drop_zone": "Drop your files here to parse",
+        "btn_postgres": "Upload to PostgreSQL",
+        "success": "Import successful!",
+        "error": "Import failed"
+    }
+}

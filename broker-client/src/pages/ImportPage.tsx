@@ -1,5 +1,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import axios from 'axios';
+
 import {
     makeStyles,
     tokens,
@@ -151,36 +153,70 @@ const ImportPage = () => {
         setFiles(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleUpload = async () => {
+    const handleUploadV3 = async () => {
         if (files.length === 0) return;
         setUploading(true);
-        setLogs(p => [...p, '>>> ZAHAJUJI IMPORT <<<']);
+        setLogs(p => [...p, '>>> ZAHAJUJI V3 IMPORT (PostgreSQL) <<<']);
 
         try {
-            // Iterate over a copy to avoid index issues if we were using indexes, 
-            // though here we iterate over objects.
             const currentFiles = [...files];
             for (const item of currentFiles) {
                 const { file } = item;
-                setLogs(p => [...p, `--- Importuji: ${file.name} ---`]);
+                setLogs(p => [...p, `--- Posílám surový soubor do V3: ${file.name} ---`]);
+                
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    // Voláme nový V3 endpoint pod /api/ prefixem
+                    const res = await axios.post('/api/v3/api-import.php', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+
+
+                    if (res.data.success) {
+                        setLogs(p => [...p, `✅ V3 Úspěch: ${res.data.message}`]);
+                        setFiles(prev => prev.filter(f => f.file !== file));
+                    } else {
+                        throw new Error(res.data.message || 'Server error');
+                    }
+                } catch (err: any) {
+                    setLogs(p => [...p, `❌ V3 CHYBA (${file.name}): ${err.message}`]);
+                }
+            }
+        } catch (e: any) {
+            setLogs(p => [...p, `❌ CRITICAL ERROR: ${e.message}`]);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (files.length === 0) return;
+        setUploading(true);
+        setLogs(p => [...p, '>>> ZAHAJUJI LEGACY IMPORT (Wedos) <<<']);
+
+        try {
+            const currentFiles = [...files];
+            for (const item of currentFiles) {
+                const { file } = item;
+                setLogs(p => [...p, `--- Importuji (JS): ${file.name} ---`]);
                 try {
                     await processImport(file, (msg: string) => setLogs(p => [...p, msg]));
                     setLogs(p => [...p, `✅ Hotovo: ${file.name}`]);
-
-                    // Remove successfully imported file from the list
                     setFiles(prev => prev.filter(f => f.file !== file));
                 } catch (err: any) {
                     setLogs(p => [...p, `❌ CHYBA (${file.name}): ${err.message}`]);
                 }
             }
         } catch (e: any) {
-            // General error catch
             setLogs(p => [...p, `❌ CRITICAL ERROR: ${e.message}`]);
-            console.error(e);
         } finally {
             setUploading(false);
         }
     };
+
+
 
     const getFileIcon = (fileName: string) => {
         if (fileName.endsWith('.pdf')) return <DocumentPdfRegular style={{ fontSize: '32px', color: '#d13438' }} />;
@@ -262,17 +298,28 @@ const ImportPage = () => {
                                     multiple
                                 />
 
-                                <Button
-                                    appearance="primary"
-                                    size="large"
-                                    icon={<ArrowUpload24Regular />}
-                                    onClick={handleUpload}
-                                    disabled={uploading}
-                                    style={{ minWidth: '150px' }}
-                                >
-                                    {uploading ? t('import.working') : `${t('import.upload_btn')} (${files.length})`}
-                                </Button>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Button
+                                        appearance="outline"
+                                        size="large"
+                                        onClick={handleUpload}
+                                        disabled={uploading}
+                                    >
+                                        Legacy Web
+                                    </Button>
+                                    <Button
+                                        appearance="primary"
+                                        size="large"
+                                        icon={<ArrowUpload24Regular />}
+                                        onClick={handleUploadV3}
+                                        disabled={uploading}
+                                        style={{ minWidth: '180px' }}
+                                    >
+                                        {uploading ? t('import.working') : `Import to V3 (Postgres)`}
+                                    </Button>
+                                </div>
                             </div>
+
                         </div>
                     )}
 

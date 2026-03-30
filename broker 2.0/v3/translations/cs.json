@@ -1,0 +1,21 @@
+{
+    "common": {
+        "save": "Uložit",
+        "cancel": "Zrušit",
+        "delete": "Smazat",
+        "loading": "Načítám..."
+    },
+    "nav": {
+        "dashboard": "Přehled",
+        "transactions": "Transakce",
+        "import": "Import (Postgres)",
+        "settings": "Nastavení"
+    },
+    "import": {
+        "title": "Import Transakcí",
+        "drop_zone": "Přetáhněte sem soubor pro parsování",
+        "btn_postgres": "Nahrát do PostgreSQL",
+        "success": "Import proběhl úspěšně!",
+        "error": "Chyba při importu"
+    }
+}
