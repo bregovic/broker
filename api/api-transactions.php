@@ -12,7 +12,7 @@ function resolveUserId() {
         if (is_array($u)) { foreach ($candidates as $k) if (isset($u[$k]) && is_numeric($u[$k])) return (int)$u[$k]; }
         elseif (is_object($u)) { foreach ($candidates as $k) if (isset($u->$k) && is_numeric($u->$k)) return (int)$u->$k; }
     }
-    return null;
+    return 0;
 }
 
 $userId = resolveUserId();
@@ -21,7 +21,6 @@ if (!$userId) {
     exit;
 }
 
-// DB Connection
 require_once __DIR__ . '/config.php';
 try {
     $pdo = get_pdo();
@@ -34,22 +33,14 @@ try {
     $sql = "SELECT trans_id, date, ticker, trans_type, amount, price, currency, amount_czk, platform, product_type, fees, ex_rate, amount_cur
             FROM transactions
             WHERE user_id = ?
-            ORDER BY date DESC, trans_id DESC
-            LIMIT 50000";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$userId]);
-    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            ORDER BY date DESC, trans_id DESC";
     
-    foreach($data as &$row) {
-        $row['amount_czk'] = (float)$row['amount_czk'];
-        $row['amount'] = (float)$row['amount'];
-        $row['price'] = (float)$row['price'];
-        $row['ex_rate'] = (float)$row['ex_rate'];
-        $row['amount_cur'] = (float)$row['amount_cur'];
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$userId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success'=>true, 'data'=>$rows]);
+    } catch (Exception $e) {
+        echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
     }
-
-    echo json_encode(['success'=>true, 'data'=>$data]);
-
-} catch (Exception $e) {
-    echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
-}
+?>

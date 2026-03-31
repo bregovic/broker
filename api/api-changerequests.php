@@ -42,28 +42,13 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     returnJson(['error' => 'Unauthorized']);
 }
 
-// Database Connection
-$pdo = null;
+// Database connection using global helper
+require_once __DIR__ . '/config.php';
 try {
-    $paths = [__DIR__ . '/env.local.php', __DIR__ . '/env.php', __DIR__ . '/../env.php'];
-    $envLoaded = false;
-    foreach ($paths as $p) { if (file_exists($p)) { require_once $p; $envLoaded = true; break; } }
-    
-    if (!$envLoaded) {
-        throw new Exception("Env file not found");
-    }
-    
-    if (defined('DB_HOST')) {
-        $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-        ]);
-    } else {
-        throw new Exception("Config missing from env");
-    }
+    $pdo = get_pdo();
 } catch (Exception $e) {
-    http_response_code(500);
-    returnJson(['error' => 'DB Connection failed: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'DB Connection failed: ' . $e->getMessage()]);
+    exit;
 }
 
 // Helper to find User ID in session

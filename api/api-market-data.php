@@ -42,7 +42,7 @@ $watchList = $watch->fetchAll(PDO::FETCH_COLUMN);
 // Improved query for PostgreSQL
 $sql = "SELECT DISTINCT src.id as ticker, 
                COALESCE(t.company_name, src.id) as company_name, 
-               COALESCE(l.current_price, q.price) as current_price, 
+               COALESCE(l.price, q.price) as current_price, 
                l.change_percent as change_percent,
                l.change_amount as change_absolute,
                l.exchange,
