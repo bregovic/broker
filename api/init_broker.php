@@ -130,43 +130,38 @@ try {
 
     // 4. Seznam základních popisků (Translations)
     $labels = [
+        // Navigation
+        ['cs', 'nav_market', 'Trh'],
+        ['cs', 'nav_portfolio', 'Portfolio'],
+        ['cs', 'nav_dividends', 'Dividendy'],
+        ['cs', 'nav_pnl', 'Zisk/Ztráta'],
+        ['cs', 'nav_balances', 'Zůstatky'],
+        ['cs', 'nav_rates', 'Kurzy'],
+        ['cs', 'nav_import', 'Import'],
+        
+        // Buttons & Actions
+        ['cs', 'btn_new', 'Nový'],
+        ['cs', 'btn_refresh', 'Obnovit'],
+        ['cs', 'btn_update_prices', 'Aktualizovat ceny'],
+        ['cs', 'filter_watched_off', 'Sledované: Vše'],
+        ['cs', 'filter_watched_on', 'Sledované: Pouze'],
+        
+        // General
+        ['cs', 'loading_data', 'Načítám data...'],
         ['cs', 'login_title', 'Přihlášení'],
-        ['en', 'login_title', 'Login'],
         ['cs', 'email_label', 'E-mailová adresa'],
-        ['en', 'email_label', 'Email Address'],
         ['cs', 'password_label', 'Heslo'],
-        ['en', 'password_label', 'Password'],
         ['cs', 'login_btn', 'Přihlásit se'],
-        ['en', 'login_btn', 'Sign In'],
         ['cs', 'register_link', 'Nemáte účet? Zaregistrujte se'],
-        ['en', 'register_link', 'Don\'t have an account? Register'],
         ['cs', 'register_title', 'Registrace'],
-        ['en', 'register_title', 'Registration'],
-        ['cs', 'name_label', 'Jméno'],
-        ['en', 'name_label', 'Name'],
-        ['cs', 'register_btn', 'Vytvořit účet'],
-        ['en', 'register_btn', 'Create Account'],
-        ['cs', 'back_to_login', 'Zpět na přihlášení'],
-        ['en', 'back_to_login', 'Back to login'],
-        ['cs', 'loading', 'Načítám...'],
-        ['en', 'loading', 'Loading...'],
         ['cs', 'save', 'Uložit'],
-        ['en', 'save', 'Save'],
         ['cs', 'cancel', 'Zrušit'],
-        ['en', 'cancel', 'Cancel'],
         ['cs', 'delete', 'Smazat'],
-        ['en', 'delete', 'Delete'],
-        ['cs', 'dashboard', 'Přehled'],
-        ['en', 'dashboard', 'Dashboard'],
-        ['cs', 'transactions', 'Transakce'],
-        ['en', 'transactions', 'Transactions'],
-        ['cs', 'import', 'Import'],
-        ['en', 'import', 'Import'],
-        ['cs', 'settings', 'Nastavení'],
-        ['en', 'settings', 'Settings']
+        ['cs', 'settings', 'Nastavení']
     ];
 
-    $stmt = $pdo->prepare("INSERT INTO translations (lang, label_key, translation) VALUES (?, ?, ?) ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation");
+    $stmt = $pdo->prepare("INSERT INTO translations (lang, label_key, translation) VALUES (?, ?, ?) 
+                           ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation");
     foreach ($labels as $label) {
         $stmt->execute($label);
     }
