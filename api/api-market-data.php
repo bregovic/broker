@@ -8,7 +8,6 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET");
 header("Content-Type: application/json; charset=UTF-8");
 
-// Database connection
 require_once __DIR__ . '/config.php';
 try {
     $pdo = get_pdo();
@@ -17,8 +16,6 @@ try {
     exit;
 }
 
-// Fetch Market Data
-// Resolve User for Watchlist
 function resolveUserId() {
     $candidates = ['user_id','uid','userid','id'];
     foreach ($candidates as $k) {
@@ -33,17 +30,11 @@ function resolveUserId() {
 }
 $userId = resolveUserId();
 
-// 1. Get watchlist
-$watch = $pdo->prepare("SELECT ticker FROM watch WHERE user_id = ?");
-$watch->execute([$userId]);
-$watchList = $watch->fetchAll(PDO::FETCH_COLUMN);
-
-// 2. Get tickers with meta
-// Improved query for PostgreSQL
-$sql = "SELECT DISTINCT src.id as ticker, 
-               COALESCE(t.company_name, src.id) as company_name, 
+// 1. Get tickers with meta - matching new schema (ticker instead of id, price instead of current_price)
+$sql = "SELECT DISTINCT src.ticker, 
+               COALESCE(t.company_name, src.ticker) as company_name, 
                COALESCE(l.price, q.price) as current_price, 
-               l.change_percent as change_percent,
+               l.change_percent,
                l.change_amount as change_absolute,
                l.exchange,
                COALESCE(l.currency, t.currency, 'USD') as currency,
@@ -61,19 +52,19 @@ $sql = "SELECT DISTINCT src.id as ticker,
             UNION
             SELECT ticker FROM live_quotes
         ) src
-        LEFT JOIN ticker_mapping t ON src.id = t.ticker
-        LEFT JOIN live_quotes l ON src.id = l.ticker
+        LEFT JOIN ticker_mapping t ON src.ticker = t.ticker
+        LEFT JOIN live_quotes l ON src.ticker = l.ticker
         LEFT JOIN (
             SELECT ticker, price, history_date
             FROM tickers_history
             WHERE (ticker, history_date) IN (SELECT ticker, MAX(history_date) FROM tickers_history GROUP BY ticker)
-        ) q ON src.id = q.ticker
-        LEFT JOIN watch w ON src.id = w.ticker AND w.user_id = :uid
-        WHERE src.id NOT LIKE 'CASH_%' 
-          AND src.id NOT LIKE 'FEE_%' 
-          AND src.id NOT LIKE 'FX_%' 
-          AND src.id NOT LIKE 'CORP_%'
-        ORDER BY src.id ASC";
+        ) q ON src.ticker = q.ticker
+        LEFT JOIN watch w ON src.ticker = w.ticker AND w.user_id = :uid
+        WHERE src.ticker NOT LIKE 'CASH_%' 
+          AND src.ticker NOT LIKE 'FEE_%' 
+          AND src.ticker NOT LIKE 'FX_%' 
+          AND src.ticker NOT LIKE 'CORP_%'
+        ORDER BY src.ticker ASC";
 
 try {
     $stmt = $pdo->prepare($sql);
@@ -84,4 +75,3 @@ try {
     echo json_encode(['error' => $e->getMessage()]);
 }
 exit;
-?>

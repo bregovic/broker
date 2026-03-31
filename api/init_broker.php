@@ -1,7 +1,7 @@
 <?php
 /**
- * init_broker.php
- * Final unified database initialization for PostgreSQL & MySQL.
+ * init_broker.php - THE NUCLEAR RESET
+ * Only run when you want to wipe EVERYTHING (Postgres / MySQL)
  */
 
 header('Content-Type: text/plain; charset=utf-8');
@@ -10,18 +10,20 @@ require_once __DIR__ . '/config.php';
 try {
     $pdo = get_pdo();
     $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-    echo "Connected to $driver database.\n\n";
+    echo "CONNECTED TO: $driver\n\n";
+
+    // --- NUCLEAR STEP FOR POSTGRES ---
+    if ($driver === 'pgsql') {
+        echo "Postgres detected. Dropping Entire Public Schema...\n";
+        $pdo->exec("DROP SCHEMA public CASCADE");
+        $pdo->exec("CREATE SCHEMA public");
+        $pdo->exec("GRANT ALL ON SCHEMA public TO postgres");
+        $pdo->exec("GRANT ALL ON SCHEMA public TO public");
+        echo "Public schema RECREATED.\n";
+    }
 
     $isMysql = ($driver === 'mysql');
     $pk = $isMysql ? "INT AUTO_INCREMENT PRIMARY KEY" : "SERIAL PRIMARY KEY";
-    $json = $isMysql ? "JSON" : "JSONB";
-
-    // 1. FORCE DROP ALL TO START CLEAN
-    $dropTables = ['user_settings', 'translations', 'transactions', 'dividends', 'live_quotes', 'rates', 'ticker_mapping', 'watch', 'currencies', 'brokers', 'asset_classes', 'tickers_history'];
-    foreach ($dropTables as $t) {
-        $pdo->exec("DROP TABLE IF EXISTS $t CASCADE");
-        echo "Dropped $t (if existed).\n";
-    }
 
     $tables = [
         'users' => "CREATE TABLE users (
@@ -70,17 +72,12 @@ try {
             ticker VARCHAR(20) PRIMARY KEY,
             price DECIMAL(18, 8) NOT NULL,
             currency VARCHAR(10) NOT NULL,
+            last_fetched TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             change_percent DECIMAL(10, 4),
             change_amount DECIMAL(18, 8),
             exchange VARCHAR(50),
             asset_type VARCHAR(20),
-            high_52w DECIMAL(18, 8),
-            low_52w DECIMAL(18, 8),
-            all_time_high DECIMAL(18, 8),
-            all_time_low DECIMAL(18, 8),
-            ema_212 DECIMAL(18, 8),
-            resilience_score INTEGER,
-            last_fetched TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            high_52w DECIMAL(18, 8), low_52w DECIMAL(18, 8), ema_212 DECIMAL(18, 8), resilience_score INTEGER
         )",
         'rates' => "CREATE TABLE rates (
             currency VARCHAR(10) NOT NULL,
@@ -95,61 +92,45 @@ try {
             translation TEXT NOT NULL,
             PRIMARY KEY (label_key, lang)
         )",
-        'currencies' => "CREATE TABLE currencies (
-            code VARCHAR(3) PRIMARY KEY,
-            name VARCHAR(50),
-            symbol VARCHAR(5),
-            is_active BOOLEAN DEFAULT TRUE
-        )",
-        'brokers' => "CREATE TABLE brokers (
-            id $pk,
-            name VARCHAR(50) UNIQUE,
-            code VARCHAR(20),
-            parser_type VARCHAR(50),
-            icon VARCHAR(50)
-        )",
-        'asset_classes' => "CREATE TABLE asset_classes (
-            id $pk,
-            name VARCHAR(50) UNIQUE,
-            code VARCHAR(20)
-        )",
         'watch' => "CREATE TABLE watch (
             user_id INTEGER NOT NULL,
             ticker VARCHAR(20) NOT NULL,
             PRIMARY KEY (user_id, ticker)
         )",
-        'tickers_history' => "CREATE TABLE tickers_history (
-            ticker VARCHAR(20) NOT NULL,
-            history_date DATE NOT NULL,
-            price DECIMAL(18, 8) NOT NULL,
-            PRIMARY KEY (ticker, history_date)
-        )",
         'ticker_mapping' => "CREATE TABLE ticker_mapping (
-            ticker VARCHAR(20) PRIMARY KEY,
-            company_name VARCHAR(255),
-            currency VARCHAR(10)
+            ticker VARCHAR(20) PRIMARY KEY, company_name VARCHAR(255), currency VARCHAR(10)
+        )",
+        'tickers_history' => "CREATE TABLE tickers_history (
+            ticker VARCHAR(20) NOT NULL, history_date DATE NOT NULL, price DECIMAL(18, 8) NOT NULL, PRIMARY KEY (ticker, history_date)
+        )",
+        'currencies' => "CREATE TABLE currencies (
+            code VARCHAR(3) PRIMARY KEY, name VARCHAR(50), symbol VARCHAR(5), is_active BOOLEAN DEFAULT TRUE
+        )",
+        'brokers' => "CREATE TABLE brokers (
+            id $pk, name VARCHAR(50) UNIQUE, code VARCHAR(20), parser_type VARCHAR(50), icon VARCHAR(50)
         )"
     ];
 
     foreach ($tables as $name => $sql) {
         $pdo->exec($sql);
-        echo "Created table '$name'.\n";
+        echo "CREATED: $name\n";
     }
 
-    // SEEDING
-    $pdo->exec("INSERT INTO users (username, password, role) VALUES ('admin', '" . password_hash('admin123', PASSWORD_DEFAULT) . "', 'admin') ON CONFLICT DO NOTHING");
+    // --- SEEDING ---
+    $pdo->exec("INSERT INTO users (username, password, role) VALUES ('admin', '" . password_hash('admin123', PASSWORD_DEFAULT) . "', 'admin')");
     
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
         ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
+        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'],
         ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'],
         ['filter_watched_off', 'Sledované: Vše'], ['filter_watched_on', 'Sledované: Pouze']
     ];
     $stmt = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) ON CONFLICT DO NOTHING");
     foreach ($labels as $l) $stmt->execute($l);
 
-    echo "\nInitialization complete. Try logging in now.";
+    echo "\n--- RESET SUCCESSFUL ---";
 
 } catch (Exception $e) {
-    echo "ERROR: " . $e->getMessage();
+    echo "\nFATAL ERROR: " . $e->getMessage();
 }
