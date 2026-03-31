@@ -1,22 +1,29 @@
 <?php
 // api-settings.php
-// Ukládá/Načítá nastavení uživatele (jazyk, theme...)
+// Ukládá/Načítá nastavení uživatele (jazyk, theme, base_currency)
 
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/config.php';
 
+session_start();
+
+function resolveUserId() {
+    $candidates = ['user_id','uid','userid','id'];
+    foreach ($candidates as $k) {
+        if (isset($_SESSION[$k]) && is_numeric($_SESSION[$k]) && (int)$_SESSION[$k] > 0) return (int)$_SESSION[$k];
+    }
+    return 1; // Fallback for dev
+}
+
 try {
     $pdo = get_pdo();
-
-    // Hardcoded User ID 1 for now if no auth logic is passed
-    // V reálu bychom měli brát $_SESSION['user_id'] nebo podobně
-    $userId = 1; 
+    $userId = resolveUserId();
 
     // POST: Save settings
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
-        $lang = $input['lang'] ?? $input['language'] ?? 'cs';
+        $lang = $input['language'] ?? $input['lang'] ?? 'cs';
         $theme = $input['theme'] ?? 'dark';
         $baseCurrency = $input['base_currency'] ?? 'CZK';
 
@@ -35,7 +42,6 @@ try {
         if ($row) {
             echo json_encode(['success' => true, 'settings' => $row]);
         } else {
-            // Default
             echo json_encode(['success' => true, 'settings' => ['lang' => 'cs', 'theme' => 'dark', 'base_currency' => 'CZK']]);
         }
     }
