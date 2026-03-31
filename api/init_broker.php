@@ -106,16 +106,25 @@ try {
         echo "VERIFIED: $name\n";
     }
 
-    // 3. SEEDING (ON CONFLICT DO NOTHING)
+    // 3. SEEDING (Extensive Translations)
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
         ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
-        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'],
-        ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'],
+        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'], ['loading_rates', 'Načítám kurzy...'],
+        ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'], ['btn_importing', 'Importuji...'],
         ['settings.title', 'Nastavení'], ['settings.language', 'Jazyk'], ['settings.currency', 'Základní měna'],
-        ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'],
+        ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'], ['common.close', 'Zavřít'],
         ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
-        ['admin.brokers', 'Služby (Brokeri)'], ['admin.currencies', 'Měny'], ['admin.assets', 'Tituly']
+        ['admin.brokers', 'Služby (Brokeri)'], ['admin.currencies', 'Měny'], ['admin.assets', 'Tituly'],
+        ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['btn_import', 'Importovat'],
+        ['filter_currency', 'Měna'], ['all', 'Vše'], ['locale', 'cs-CZ'],
+        ['col_date', 'Datum'], ['col_currency', 'Měna'], ['col_quantity', 'Množství'],
+        ['col_rate_czk', 'Kurz CZK'], ['col_unit', 'Za jednotku'], ['col_source', 'Zdroj'],
+        ['add_rate_title', 'Přidat ruční kurz'], ['import_cnb_title', 'Import kurzů ČNB'],
+        ['select_year', 'Vyberte rok'], ['import_cnb_desc', 'Tato akce stáhne kompletní kurzovní lístek ČNB pro vybraný rok.'],
+        ['import.drop_title', 'Přetáhněte soubory sem'], ['import.supported', 'Podporované formáty: CSV, XLSX, PDF (vybrané)'],
+        ['import.add_btn', 'Přidat soubor'], ['import.working', 'Zpracovávám...'],
+        ['import.unsupported.title', 'Nepodporovaný formát'], ['import.unsupported.desc', 'Tento formát zatím neumíme automaticky parsovat.']
     ];
     $stmtT = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) ON CONFLICT DO NOTHING");
     foreach ($labels as $l) $stmtT->execute($l);
