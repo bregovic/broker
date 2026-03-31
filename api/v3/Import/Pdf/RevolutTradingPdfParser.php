@@ -2,34 +2,53 @@
 namespace Broker\V3\Import\Pdf;
 
 use Broker\V3\Import\AbstractParser;
-use Broker\V3\Import\TransactionDTO;
 
-/**
- * Revolut Trading PDF Parser
- */
 class RevolutTradingPdfParser extends AbstractParser {
+    
     public function getName(): string {
-        return "Revolut Trading (PDF)";
+        return "Revolut Trading PDF";
     }
 
     public function canParse(string $content, string $filename): bool {
-        // Discovery is handled by database rules, but we can verify here if needed
-        return str_contains($content, 'Account Statement') && str_contains($content, 'Revolut');
+        return preg_match('/Account Statement|USD Transactions/i', $content);
     }
 
     public function parse(string $content): array {
         $transactions = [];
-        // Tady bude tvá budoucí logika parsování textu z PDF...
-        // Zatím vracíme jako příklad jeden DTO, aby bylo vidět, že to protéká.
-        
-        // REVOLUT TRADING PDF PARSING LOGIC (Regex based)
-        // Příklad detekce obchodu (Buy/Sell) v textu PDF:
-        // Market Buy | AAPL | 12.03.2024 | 1.5 | 150.20 | USD
-        
-        // PRO TESTOVÁNÍ: Pokud v PDF najdeme "Market Buy", zkusíme simulovat záchyt
-        // (V reálu tu bude pořádný match_all regex)
-        if (preg_match('/Price per share\s+([\d,.]+)\s+([A-Z]{3})/i', $content, $m)) {
-            // Jen ukázka, že to něco našlo
+        $lines = explode("\n", $content);
+
+        // Pattern for trading transactions: 
+        // 2023-01-01  AAPL  Buy - Market  1.00000000  150.00  USD  ...
+        // Note: This is a simplified regex, real Revolut PDFs have split layouts
+        foreach ($lines as $line) {
+            // Regex attempt for Revolut Trading lines
+            // Typical line: 2023-05-15  AAPL  Buy - Market  2.5  172.50  USD
+            if (preg_match('/(\d{4}-\d{2}-\d{2})\s+([A-Z0-9.]+)\s+(Buy|Sell).*?\s+([\d.]+)\s+([\d.]+)\s+([A-Z]{3})/', $line, $matches)) {
+                $transactions[] = [
+                    'date' => $matches[1],
+                    'ticker' => $matches[2],
+                    'trans_type' => strtolower($matches[3]),
+                    'amount' => (float)$matches[4],
+                    'price' => (float)$matches[5],
+                    'currency' => $matches[6],
+                    'platform' => 'Revolut',
+                    'product_type' => 'Akcie'
+                ];
+            }
+            
+            // Regex for Dividends
+            if (preg_match('/(\d{4}-\d{2}-\d{2})\s+([A-Z0-9.]+)\s+Dividend.*?\s+([\d.]+)\s+([A-Z]{3})/', $line, $matches)) {
+                $transactions[] = [
+                    'date' => $matches[1],
+                    'ticker' => $matches[2],
+                    'trans_type' => 'dividend',
+                    'amount' => (float)$matches[3],
+                    'price' => 1,
+                    'currency' => $matches[4],
+                    'platform' => 'Revolut',
+                    'product_type' => 'Akcie'
+                ];
+            }
         }
 
         return $transactions;

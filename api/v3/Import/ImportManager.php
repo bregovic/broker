@@ -76,35 +76,23 @@ class ImportManager {
      * Looks up matching rule in the database
      */
     private function discoverRule(string $filename, string $content): ?array {
-        $stmt = $this->pdo->query("SELECT r.*, b.name as broker_name 
-                                   FROM broker_import_rules r 
-                                   JOIN brokers b ON r.broker_id = b.id");
+        $stmt = $this->pdo->query("SELECT * FROM broker_import_rules");
         $allRules = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         foreach ($allRules as $rule) {
             $isMatch = false;
 
-            // Check filename pattern
-            if ($rule['file_pattern']) {
-                if (preg_match('/' . $rule['file_pattern'] . '/i', $filename)) {
+            // 1. Check content regex (high priority)
+            if ($rule['content_regex']) {
+                if (preg_match('/' . $rule['content_regex'] . '/i', $content)) {
                     $isMatch = true;
                 }
             }
 
-            // Check content patterns
-            if ($rule['content_patterns']) {
-                $patterns = json_decode($rule['content_patterns'], true);
-                $matches = 0;
-                foreach ($patterns as $p) {
-                    if (preg_match('/' . $p . '/i', $content)) {
-                        $matches++;
-                    }
-                }
-                
-                if ($matches >= $rule['min_matches']) {
+            // 2. Check filename pattern if content didn't match or was empty
+            if (!$isMatch && $rule['file_pattern']) {
+                if (preg_match('/' . $rule['file_pattern'] . '/i', $filename)) {
                     $isMatch = true;
-                } else {
-                    $isMatch = false; // min_matches is mandatory if patterns are defined
                 }
             }
 

@@ -173,8 +173,13 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                         <Table size="small">
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHeaderCell>Název</TableHeaderCell>
-                                                    <TableHeaderCell style={{ width: '40px' }}></TableHeaderCell>
+                                                    <TableHeaderCell>
+                                                        {lookupTable === 'brokers' ? 'Název broker' : 
+                                                         lookupTable === 'currencies' ? 'Kód měny' : 
+                                                         lookupTable === 'broker_import_rules' ? 'Konfigurace importu' : 
+                                                         'Název'}
+                                                    </TableHeaderCell>
+                                                    <TableHeaderCell style={{ width: '40px' }}>Akce</TableHeaderCell>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -183,23 +188,24 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                                         <TableCell>
                                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                                 <Text weight="semibold">{row.name || row.currency || row.config_name}</Text>
-                                                                {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_type}</Text>}
+                                                                {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Typ: {row.parser_type || 'generic'}</Text>}
                                                                 {lookupTable === 'currencies' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Zdroj: {row.source || 'CNB'}</Text>}
                                                                 {lookupTable === 'broker_import_rules' && (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Broker: {row.broker_name}</Text>
-                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Třída: {row.parser_class.split('\\').pop()}</Text>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Broker: <Text weight="bold" size={100}>{row.broker_name}</Text></Text>
+                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_class.split('\\').pop()}</Text>
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         </TableCell>
                                                         <TableCell>
-                                                            {row.id && (
+                                                            {(row.id || row.currency) && (
                                                                 <Button 
                                                                     icon={<DeleteRegular />} 
                                                                     appearance="subtle" 
-                                                                    onClick={() => deleteItem(row.id)} 
+                                                                    onClick={() => deleteItem(row.id || row.currency)} 
                                                                     style={{ color: tokens.colorPaletteRedForeground1 }}
+                                                                    title="Smazat záznam"
                                                                 />
                                                             )}
                                                         </TableCell>
