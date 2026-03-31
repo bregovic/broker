@@ -21,23 +21,14 @@ if (!$userId) {
     exit;
 }
 
-$paths = [
-    __DIR__.'/env.local.php', 
-    __DIR__.'/php/env.local.php', 
-    __DIR__.'/../env.local.php', 
-    __DIR__.'/../../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__.'/env.php',
-    __DIR__.'/../env.php',
-    __DIR__.'/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-foreach($paths as $p) { if(file_exists($p)) { require_once $p; break; } }
-
-if (!defined('DB_HOST')) { echo json_encode(['success'=>false, 'error'=>'DB Config Missing']); exit; }
-
+// DB Connection
+require_once __DIR__ . '/config.php';
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo = get_pdo();
+} catch (Exception $e) {
+    echo json_encode(['success'=>false, 'error'=>'DB Connection failed']);
+    exit;
+}
     
     // Updated query to include ex_rate and amount_cur
     $sql = "SELECT trans_id, date, id as ticker, trans_type, amount, price, currency, amount_czk, platform, product_type, fees, ex_rate, amount_cur

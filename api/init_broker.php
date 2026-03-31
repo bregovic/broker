@@ -163,7 +163,9 @@ try {
         ['cs', 'save', 'Uložit'],
         ['cs', 'cancel', 'Zrušit'],
         ['cs', 'delete', 'Smazat'],
-        ['cs', 'settings', 'Nastavení']
+        ['cs', 'settings', 'Nastavení'],
+        ['cs', 'import.drop_title', 'Nahrajte soubor s výpisem brokera'],
+        ['cs', 'import.supported', 'Podporované formáty: Fio CSV, XTB (v přípravě), Interactive Brokers (v přípravě)']
     ];
 
     $stmt = $pdo->prepare("INSERT INTO translations (lang, label_key, translation) VALUES (?, ?, ?) 
