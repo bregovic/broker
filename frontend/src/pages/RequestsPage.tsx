@@ -321,7 +321,7 @@ const RequestsPage = () => {
     const isDev = import.meta.env.DEV;
     const getApiUrl = (endpoint: string) => isDev
         ? `http://localhost/Webhry/hollyhop/broker/broker 2.0/${endpoint}`
-        : `/investyx/${endpoint}`;
+        : `/api/${endpoint}`;
 
     useEffect(() => {
         loadRequests();

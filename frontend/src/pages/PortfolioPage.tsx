@@ -82,7 +82,7 @@ export const PortfolioPage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('/investyx/api-transactions.php');
+            const res = await axios.get('/api/api-transactions.php');
             if (res.data.success) {
                 setItems(res.data.data);
             } else {
@@ -110,7 +110,7 @@ export const PortfolioPage = () => {
                 return;
             }
 
-            const res = await axios.post('/investyx/api-delete-transactions.php', {
+            const res = await axios.post('/api/api-delete-transactions.php', {
                 ids: idsToDelete
             });
 
@@ -133,7 +133,7 @@ export const PortfolioPage = () => {
         setUpdatingPrices(true);
         try {
             // Call backend script to update prices from Yahoo/API
-            await axios.post('/investyx/ajax-update-prices.php');
+            await axios.post('/api/ajax-update-prices.php');
             alert('Tržní data byla aktualizována.');
             loadData();
         } catch (e: any) {

@@ -15,7 +15,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-const BASE_NAME = import.meta.env.DEV ? '/' : '/investyx';
+const BASE_NAME = '/';
 
 const RequireAuth = () => {
   const { user, isLoading } = useAuth();

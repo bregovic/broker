@@ -1,72 +1,32 @@
-# Automatické nasazení (Deployment) - Investhor
+# Modernizované Nasazení (Deployment) - Broker / Investyx 2.0
 
-## Plán
-1. **Původní PHP backend** zůstane na `hollyhop.cz/broker`.
-2. **Nový React frontend** (Investhor) bude na `hollyhop.cz/investhor`.
-3. Využijeme GitHub Actions pro automatické sestavení a nahrání obou částí na FTP.
+## Struktura projektu
+- `/frontend`: React frontend (Vite)
+- `/api`: PHP backend (API v3)
+- `Dockerfile`: Konfigurace pro Railway (One-step build)
+- `nginx.conf`: Konfigurace webového serveru
 
-## Jak na to
-Vytvoř/uprav soubor `.github/workflows/deploy.yml` v kořenové složce repozitáře (`hollyhop/.github/workflows/Deploy.yml`).
+## Nasazení na Railway
+Projekt je nastaven pro automatické nasazení přes Docker. 
+Railway najde `Dockerfile` v kořenu a provede následující:
+1. Sestaví frontend (React) ve fázi `frontend-builder`.
+2. Sestaví produkční obraz s `php-nginx`.
+3. Zkopíruje PHP soubory z `/api` do `/var/www/html/`.
+4. Zkopíruje zkompilovaný frontend do `/var/www/html/public`.
+5. Spustí Nginx na portu 8080.
 
-```yaml
-name: Deploy HollyHop (Broker & Investhor)
+### Důležité cesty v aplikaci
+- **Frontend** běží na kořenové URL `/`.
+- **Backend (API)** je dostupný pod prefixem `/api/` (např. `/api/v3/api-import.php`).
+- Nginx toto mapování zajišťuje automaticky.
 
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  # 1. Deploy Legacy PHP Backend
-  deploy-backend:
-    name: Deploy PHP Backend (/broker)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Sync PHP files to FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./broker/broker 2.0/
-          server-dir: /www/domains/hollyhop.cz/broker/broker 2.0/ 
-          exclude: |
-            **/.git*
-            **/node_modules/**
-
-  # 2. Build & Deploy React Frontend
-  deploy-frontend:
-    name: Deploy React Investhor (/investhor)
-    runs-on: ubuntu-latest
-    needs: deploy-backend # Optional: run in parallel if you remove this
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          
-      - name: Install & Build Investhor
-        # Go to client folder, install deps, and build
-        run: |
-          cd broker/broker-client
-          npm install
-          npm run build
-          
-      - name: Sync React Build to FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-            server: ${{ secrets.FTP_SERVER }}
-            username: ${{ secrets.FTP_USERNAME }}
-            password: ${{ secrets.FTP_PASSWORD }}
-            # Upload the contents of 'dist' folder
-            local-dir: ./broker/broker-client/dist/
-            server-dir: /www/domains/hollyhop.cz/investhor/
+## Lokální spuštění přes Docker
+Pokud máš nainstalovaný Docker, můžeš si aplikaci spustit lokálně:
+```bash
+docker build -t broker-local .
+docker run -p 8080:8080 broker-local
 ```
+Poté bude aplikace dostupná na `http://localhost:8080`.
 
-### Hotovo!
-Jakmile tento soubor vložíš na GitHub, každá změna se automaticky:
-1. Promítne do starého PHP webu.
-2. Zkompiluje nový React web a nahraje ho na `/investhor`.
+## GitHub Actions (FTP Backup)
+Soubor `.github/workflows/deploy.yml` stále obsahuje konfiguraci pro záložní nasazení na FTP (Wedos), pokud by bylo potřeba. Je nastaven tak, aby používal novou strukturu složek.

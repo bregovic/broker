@@ -1,7 +1,0 @@
-date,id,amount,price,currency,amount_cur,platform,product_type,trans_type,fees,notes
-2024-09-26,CBK,84.9892999,16.36,EUR,1390.00,Revolut,Stock,Buy,0.00,Trade - Market BUY (PDF import CBK)
-2024-12-05,CBK,42.49464995,15.11,EUR,642.09,Revolut,Stock,Sell,0.00,Trade - Market SELL (PDF import CBK)
-2025-05-20,CBK,1.00,20.33,EUR,20.33,Revolut,Stock,Dividend,0.00,Dividend (PDF import CBK)
-2025-06-02,CBK,1.12401648,26.69,EUR,30.00,Revolut,Stock,Buy,0.00,Trade - Market BUY (PDF import CBK)
-2025-06-02,CBK,0.74934432,26.69,EUR,20.00,Revolut,Stock,Buy,0.00,Trade - Market BUY (PDF import CBK)
-2025-08-28,CBK,15.417823,32.43,EUR,500.00,Revolut,Stock,Buy,0.00,Trade - Market BUY (PDF import CBK)

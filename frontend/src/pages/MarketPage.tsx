@@ -76,9 +76,7 @@ const ChartModal = ({ open, ticker, currency, companyName, onClose }: { open: bo
     const [period, setPeriod] = useState('1Y');
 
     const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev
-        ? `http://localhost/Webhry/hollyhop/broker/investyx/${endpoint}`
-        : `/investyx/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     const handleRefreshData = async () => {
         setLoading(true);
@@ -196,7 +194,7 @@ const MarketPage = () => {
 
 
     const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev ? `http://localhost/Webhry/hollyhop/broker/investyx/${endpoint}` : `/investyx/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     const toggleWatch = async (ticker: string) => {
         setItems(prev => prev.map(i => i.ticker === ticker ? { ...i, is_watched: i.is_watched ? 0 : 1 } : i));

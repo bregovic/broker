@@ -70,7 +70,7 @@ export const RatesPage = () => {
             const params: any = {};
             if (selectedCurrency) params.currency = selectedCurrency;
 
-            const res = await axios.get('/investyx/api-rates-list.php', { params });
+            const res = await axios.get('/api/api-rates-list.php', { params });
             if (res.data.success) {
                 setItems(res.data.data);
                 setCurrencies(res.data.currencies);
@@ -88,7 +88,7 @@ export const RatesPage = () => {
     const handleAdd = async () => {
         setSubmitting(true);
         try {
-            const res = await axios.post('/investyx/ajax-add-rate.php', {
+            const res = await axios.post('/api/ajax-add-rate.php', {
                 date: newRate.date,
                 currency: newRate.currency,
                 amount: parseFloat(newRate.amount),
@@ -114,7 +114,7 @@ export const RatesPage = () => {
             const formData = new FormData();
             formData.append('year', selectedYear);
 
-            const res = await axios.post('/investyx/cnb-import-year.php', formData);
+            const res = await axios.post('/api/cnb-import-year.php', formData);
             if (res.data.success || res.data.ok) {
                 const inserted = res.data.inserted || 0;
                 const updated = res.data.updated || 0;

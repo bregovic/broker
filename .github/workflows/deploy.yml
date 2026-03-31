@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Important for delta deployments
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -22,19 +22,18 @@ jobs:
 
       - name: Build Frontend
         run: |
-          cd broker-client
+          cd frontend
           npm install
           npm run build
 
       - name: Prepare Deployment Folder
         run: |
           mkdir deploy_out
-          # Copy backend files (contents of broker 2.0)
-          cp -r "broker 2.0/." deploy_out/
-          # Copy frontend files (contents of broker-client/dist)
-          # This will overwrite any duplicates, which is fine as frontend dist is priority for index.html
-          cp -r broker-client/dist/. deploy_out/
-          # Remove redundant or sensitive files from deployment
+          # Copy backend files
+          cp -r "api/." deploy_out/
+          # Copy frontend files
+          cp -r frontend/dist/. deploy_out/
+          # Remove redundant files
           rm -f deploy_out/env.local.php
           rm -rf deploy_out/node_modules
 
@@ -46,9 +45,6 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./deploy_out/
           server-dir: /www/investyx/
-          # Since we are deploying from a transient folder, git state might be weird.
-          # v4.3.4+ handles non-git folders better or we can force it.
-          # We don't use clean: true to avoid deleting uploads/ or other server-side data.
 
       - name: Trigger Deploy Hook
         run: |

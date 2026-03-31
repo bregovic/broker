@@ -1,0 +1,14 @@
+.git
+.github
+.agent
+.gemini
+node_modules
+frontend/node_modules
+frontend/dist
+api/env.local.php
+api/uploads
+*.log
+broker_deploy.zip
+manual_deploy.ps1
+README.md
+DEPLOYMENT_INFO.md

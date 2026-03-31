@@ -26,7 +26,7 @@ const version = `${datePrefix}.${rev}`;
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/investyx/', // Deploy to hollyhop.cz/investyx
+  base: '/', // Deploy to Railway root domain
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString())

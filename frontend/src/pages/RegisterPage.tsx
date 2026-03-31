@@ -41,9 +41,7 @@ const useStyles = makeStyles({
     }
 });
 
-const API_BASE = import.meta.env.DEV
-    ? 'https://hollyhop.cz/broker/broker 2.0'
-    : '/broker/broker 2.0';
+const API_BASE = '/api';
 
 export const RegisterPage: React.FC = () => {
     const styles = useStyles();

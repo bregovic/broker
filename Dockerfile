@@ -1,9 +1,9 @@
 # --- STAGE 1: Build Frontend (React) ---
 FROM node:20-alpine as frontend-builder
 WORKDIR /app
-COPY broker-client/package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
-COPY broker-client/ ./
+COPY frontend/ ./
 RUN npm run build
 
 # --- STAGE 2: Production Server (PHP + Nginx) ---
@@ -20,8 +20,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Setup Backendu
 WORKDIR /var/www/html
-COPY broker\ 2.0/ ./
-
+COPY api/ ./
 
 # Kopírujeme zkompilovaný Frontend z prvního kroku
 COPY --from=frontend-builder /app/dist/. ./public

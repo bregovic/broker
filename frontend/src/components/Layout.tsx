@@ -216,7 +216,7 @@ const Layout = () => {
             <header className={styles.header}>
                 <div className={styles.headerLeftGroup}>
                     <div className={styles.headerLeft} onClick={() => navigate('/')}>
-                        <Image src="/investyx/logo.png" className={styles.logoImage} alt="Investyx Logo" />
+                        <Image src="/logo.png" className={styles.logoImage} alt="Investyx Logo" />
                     </div>
 
                     <nav className={styles.navContainer}>

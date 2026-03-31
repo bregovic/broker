@@ -29,9 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const API_BASE = import.meta.env.DEV
-        ? 'http://localhost/Webhry/hollyhop/broker/broker 2.0'
-        : '/investyx'; // Correct path matching deployment
+    const API_BASE = '/api';
 
     useEffect(() => {
         checkAuth();
@@ -101,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const logout = () => {
         // Optional: Call server logout
-        fetch(`${API_BASE}/php/logout.php`); // If exists
+        fetch(`${API_BASE}/logout.php`); // If exists
         setUser(null);
     };
 

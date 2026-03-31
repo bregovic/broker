@@ -16,7 +16,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 class FxRateService {
     private cache = new Map<string, number>();
-    private endpoint = '/investyx/rates.php?api=1';
+    private endpoint = '/api/rates.php?api=1';
 
     async getRate(date: string, currency: string): Promise<number> {
         const d = date.slice(0, 10);
@@ -197,7 +197,7 @@ export const processImport = async (file: File, log: (msg: string) => void): Pro
 
     // Save
     log('Saving to database...');
-    const apiUrl = '/investyx/import-handler.php';
+    const apiUrl = '/api/import-handler.php';
 
     const res = await axios.post(apiUrl, {
         provider: provider,

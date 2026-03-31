@@ -87,7 +87,7 @@ export const DividendsPage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('/investyx/api-dividends.php');
+            const res = await axios.get('/api/api-dividends.php');
             if (res.data.success) {
                 setItems(res.data.data);
                 setStats(res.data.stats);

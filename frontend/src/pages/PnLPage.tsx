@@ -65,7 +65,7 @@ export const PnLPage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('/investyx/api-pnl.php');
+            const res = await axios.get('/api/api-pnl.php');
             if (res.data.success) {
                 setItems(res.data.data);
                 setStats(res.data.stats);

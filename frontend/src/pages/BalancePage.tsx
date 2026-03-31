@@ -94,7 +94,7 @@ export const BalancePage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`/investyx/api-portfolio.php?groupBy=${groupBy}`);
+            const res = await axios.get(`/api/api-portfolio.php?groupBy=${groupBy}`);
             if (res.data.success) {
                 setItems(res.data.data);
                 setSummary(res.data.summary);
