@@ -159,9 +159,9 @@ try {
     
     // Seed import rules based on JS recognizers
     $rules = [
-        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'revolut.*trading', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser'],
-        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'revolut.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser'],
-        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'revolut.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser'],
+        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'revolut.*trading|account-statement.*cs-cz', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser'],
+        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser'],
+        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'revolut.*commodity|account-statement.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)|Exchanged to.*(XAU|XAG|XPT|XPD)|Drahé kovy|Komodity', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser'],
         ['fio_pdf', 'Fio Banka (PDF)', 'fio', 'Fio banka|Výpis operací|Výpis z účtu', 'Broker\\V3\\Import\\Pdf\\FioPdfParser'],
         ['fio_csv', 'Fio Banka (CSV)', 'fio', 'ID pokynu|Datum|Směr|Měna|Množství|Cena', 'Broker\\V3\\Import\\Csv\\FioCsvParser'],
         ['ibkr_pdf', 'Interactive Brokers (PDF)', 'ibkr|u\\d+', 'Time Period:.*to|Date.*Account.*Description.*Transaction Type.*Symbol.*Commission.*Net Amount', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser'],

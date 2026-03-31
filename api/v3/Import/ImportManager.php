@@ -84,14 +84,14 @@ class ImportManager {
 
             // 1. Check content regex (high priority)
             if ($rule['content_regex']) {
-                if (preg_match('/' . $rule['content_regex'] . '/i', $content)) {
+                if (preg_match('/' . $rule['content_regex'] . '/ui', $content)) {
                     $isMatch = true;
                 }
             }
 
             // 2. Check filename pattern if content didn't match or was empty
             if (!$isMatch && $rule['file_pattern']) {
-                if (preg_match('/' . $rule['file_pattern'] . '/i', $filename)) {
+                if (preg_match('/' . $rule['file_pattern'] . '/ui', $filename)) {
                     $isMatch = true;
                 }
             }
