@@ -6,7 +6,7 @@ session_start();
 
 try {
     $pdo = get_pdo();
-    $table = $_GET['table'] ?? '';
+    $table = $_GET['table'] ?? $_GET['type'] ?? '';
     if (!in_array($table, ['brokers', 'currencies', 'asset_types', 'admin.asset_types', 'broker_import_rules'])) {
         throw new Exception("Invalid table: " . $table);
     }
