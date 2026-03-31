@@ -17,18 +17,18 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
         $lang = $input['lang'] ?? $input['language'] ?? 'cs';
-        $theme = $input['theme'] ?? 'dark'; // Defaulting to dark as requested
+        $theme = $input['theme'] ?? 'dark';
+        $baseCurrency = $input['base_currency'] ?? 'CZK';
 
-        // PostgreSQL syntax: ON CONFLICT
-        $stmt = $pdo->prepare("INSERT INTO user_settings (user_id, lang, theme) VALUES (?, ?, ?) 
-                               ON CONFLICT (user_id) DO UPDATE SET lang = EXCLUDED.lang, theme = EXCLUDED.theme");
-        $stmt->execute([$userId, $lang, $theme]);
+        $stmt = $pdo->prepare("INSERT INTO user_settings (user_id, lang, theme, base_currency) VALUES (?, ?, ?, ?) 
+                               ON CONFLICT (user_id) DO UPDATE SET lang = EXCLUDED.lang, theme = EXCLUDED.theme, base_currency = EXCLUDED.base_currency");
+        $stmt->execute([$userId, $lang, $theme, $baseCurrency]);
 
         echo json_encode(['success' => true]);
     }
     // GET: Load settings
     else {
-        $stmt = $pdo->prepare("SELECT lang, theme FROM user_settings WHERE user_id = ?");
+        $stmt = $pdo->prepare("SELECT lang, theme, base_currency FROM user_settings WHERE user_id = ?");
         $stmt->execute([$userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -36,7 +36,7 @@ try {
             echo json_encode(['success' => true, 'settings' => $row]);
         } else {
             // Default
-            echo json_encode(['success' => true, 'settings' => ['lang' => 'cs', 'theme' => 'dark']]);
+            echo json_encode(['success' => true, 'settings' => ['lang' => 'cs', 'theme' => 'dark', 'base_currency' => 'CZK']]);
         }
     }
 
