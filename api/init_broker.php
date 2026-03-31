@@ -107,6 +107,18 @@ try {
     }
 
     // 3. SEEDING (Extensive Translations)
+    // Migrace starých názvů sloupců na nové 'id'
+    try {
+        $pdo->exec("ALTER TABLE brokers RENAME COLUMN broker_id TO id");
+    } catch(Exception $e) {}
+    try {
+        $pdo->exec("ALTER TABLE asset_types RENAME COLUMN type_id TO id");
+    } catch(Exception $e) {}
+
+    // Vyčištění duplicit v asset_types, pokud existují (ponecháme jen unikátní jména s nejnižším ID)
+    $pdo->exec("DELETE FROM asset_types a USING asset_types b WHERE a.id > b.id AND a.name = b.name");
+    $pdo->exec("DELETE FROM brokers a USING brokers b WHERE a.id > b.id AND a.name = b.name");
+
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
         ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
