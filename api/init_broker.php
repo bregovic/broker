@@ -86,13 +86,13 @@ try {
             PRIMARY KEY (label_key, lang)
         )",
         'brokers' => "CREATE TABLE IF NOT EXISTS brokers (
-            broker_id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            parser_type VARCHAR(50)
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) UNIQUE NOT NULL,
+            parser_type VARCHAR(50) DEFAULT 'generic'
         )",
         'asset_types' => "CREATE TABLE IF NOT EXISTS asset_types (
-            type_id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) UNIQUE NOT NULL
         )",
         'system_config' => "CREATE TABLE IF NOT EXISTS system_config (
             config_key VARCHAR(100) PRIMARY KEY,
@@ -115,7 +115,7 @@ try {
         ['settings.title', 'Nastavení'], ['settings.language', 'Jazyk'], ['settings.currency', 'Základní měna'],
         ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'], ['common.close', 'Zavřít'],
         ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
-        ['admin.brokers', 'Poskytovatelé (Služby)'], ['admin.currencies', 'Měny (Kurzovník)'], ['admin.assets', 'Kategorie produktů'],
+        ['admin.brokers', 'Poskytovatelé (Služby)'], ['admin.currencies', 'Měny (Kurzovník)'], ['admin.asset_types', 'Kategorie produktů'],
         ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['btn_import', 'Importovat'],
         ['filter_currency', 'Měna'], ['all', 'Vše'], ['locale', 'cs-CZ'],
         ['col_date', 'Datum'], ['col_currency', 'Měna'], ['col_quantity', 'Množství'],

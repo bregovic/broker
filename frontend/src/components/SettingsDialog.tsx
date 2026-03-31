@@ -28,7 +28,7 @@ import {
 import { useTranslation } from '../context/TranslationContext';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LockClosedRegular, SettingsRegular, DatabaseRegular, GlobeRegular, ArrowLeftRegular, AddRegular } from '@fluentui/react-icons';
+import { LockClosedRegular, SettingsRegular, DatabaseRegular, GlobeRegular, ArrowLeftRegular, AddRegular, DeleteRegular } from '@fluentui/react-icons';
 
 const useStyles = makeStyles({
     content: {
@@ -122,8 +122,20 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
         }
     };
 
+    const deleteItem = async (id: any) => {
+        if (!confirm("Opravdu smazat?")) return;
+        try {
+            const res = await axios.delete(getApiUrl(`api-admin-lookup.php?table=${lookupTable}&id=${id}`));
+            if (res.data.success) {
+                loadLookup(lookupTable!);
+            }
+        } catch (e: any) {
+            alert(e.response?.data?.message || "Smazání selhalo. Možná je záznam používán v transakcích.");
+        }
+    };
+
     return (
-        <Dialog open={open} onOpenChange={(_, data) => { onOpenChange(data.open); if(!data.open) setLookupTable(null); }}>
+        <Dialog open={open} onOpenChange={(_, data) => { onOpenChange(data.open); if(!data.open) { setLookupTable(null); setAdminPassword(''); setIsAdmin(false); } }}>
             <DialogSurface style={{ maxWidth: '600px', width: '95%' }}>
                 <DialogBody>
                     <DialogTitle>{t('settings.title')}</DialogTitle>
@@ -144,16 +156,29 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHeaderCell>Název</TableHeaderCell>
-                                                    {lookupTable === 'brokers' && <TableHeaderCell>Parser</TableHeaderCell>}
-                                                    {lookupTable === 'currencies' && <TableHeaderCell>Zdroj</TableHeaderCell>}
+                                                    <TableHeaderCell style={{ width: '40px' }}></TableHeaderCell>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {lookupData.map((row, idx) => (
                                                     <TableRow key={idx}>
-                                                        <TableCell><Text weight="semibold">{row.name || row.currency}</Text></TableCell>
-                                                        {lookupTable === 'brokers' && <TableCell>{row.parser_type}</TableCell>}
-                                                        {lookupTable === 'currencies' && <TableCell>{row.source || 'CNB'}</TableCell>}
+                                                        <TableCell>
+                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                <Text weight="semibold">{row.name || row.currency}</Text>
+                                                                {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_type}</Text>}
+                                                                {lookupTable === 'currencies' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Zdroj: {row.source || 'CNB'}</Text>}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {row.id && (
+                                                                <Button 
+                                                                    icon={<DeleteRegular />} 
+                                                                    appearance="subtle" 
+                                                                    onClick={() => deleteItem(row.id)} 
+                                                                    style={{ color: tokens.colorPaletteRedForeground1 }}
+                                                                />
+                                                            )}
+                                                        </TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>
@@ -219,7 +244,7 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                                     <Button size="small" onClick={() => loadLookup('brokers')}>{t('admin.brokers')}</Button>
                                                     <Button size="small" onClick={() => loadLookup('currencies')}>{t('admin.currencies')}</Button>
-                                                    <Button size="small" onClick={() => loadLookup('asset_types')}>{t('admin.assets')}</Button>
+                                                    <Button size="small" onClick={() => loadLookup('admin.asset_types')}>{t('admin.asset_types')}</Button>
                                                 </div>
                                             </div>
 

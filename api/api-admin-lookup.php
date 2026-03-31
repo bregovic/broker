@@ -4,21 +4,19 @@ header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/config.php';
 session_start();
 
-// Simple admin check
-// For now, we trust the frontend gate, but for real safety we'd check a session flag
-// In a real app, you'd do: if ($_SESSION['is_admin'] !== true) die('Unauthorized');
-
 try {
     $pdo = get_pdo();
     $table = $_GET['table'] ?? '';
-    if (!in_array($table, ['brokers', 'currencies', 'asset_types'])) {
+    if (!in_array($table, ['brokers', 'currencies', 'asset_types', 'admin.asset_types'])) {
         throw new Exception("Invalid table: " . $table);
     }
+    
+    // Map frontend label key back to table name if needed
+    if ($table === 'admin.asset_types') $table = 'asset_types';
 
     // GET: List data
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if ($table === 'currencies') {
-            // Special case: get currencies from rates table to show what we have
             $stmt = $pdo->query("SELECT DISTINCT currency as name, 'CNB' as source FROM rates ORDER BY currency");
         } else {
             $stmt = $pdo->query("SELECT * FROM $table ORDER BY name");
@@ -40,6 +38,26 @@ try {
            $stmt->execute([$name]);
         }
         
+        echo json_encode(['success' => true]);
+    }
+    // DELETE: Remove record
+    elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+        $id = $_GET['id'] ?? null;
+        if (!$id) throw new Exception("ID is required for deletion");
+
+        // Check for dependencies before deleting
+        if ($table === 'brokers') {
+            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE broker_id = ?");
+            $check->execute([$id]);
+            if ($check->fetchColumn() > 0) throw new Exception("Nelze smazat - existují transakce u tohoto poskytovatele.");
+        } elseif ($table === 'asset_types') {
+            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE asset_type_id = ?");
+            $check->execute([$id]);
+            if ($check->fetchColumn() > 0) throw new Exception("Nelze smazat - existují transakce s tímto typem aktiva.");
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM $table WHERE id = ?");
+        $stmt->execute([$id]);
         echo json_encode(['success' => true]);
     }
 
