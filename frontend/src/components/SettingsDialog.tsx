@@ -35,8 +35,7 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
     const { user } = useAuth();
     const [saving, setSaving] = useState(false);
 
-    const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev ? `http://localhost/Webhry/hollyhop/broker/broker 2.0/${endpoint}` : `/investyx/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     const handleSave = async () => {
         setSaving(true);

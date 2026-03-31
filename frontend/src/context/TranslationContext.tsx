@@ -24,10 +24,7 @@ export const TranslationProvider = ({ children }: { children: React.ReactNode })
     const [translations, setTranslations] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
 
-    const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev
-        ? `http://localhost/Webhry/hollyhop/broker/broker%202.0/${endpoint}`
-        : `/investyx/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     // Load user settings on mount
     useEffect(() => {

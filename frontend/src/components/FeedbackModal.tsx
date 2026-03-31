@@ -119,10 +119,7 @@ export const FeedbackModal = ({ open, onOpenChange }: Omit<FeedbackModalProps, '
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
     // Helper for API ID
-    const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev
-        ? `http://localhost/Webhry/hollyhop/broker/broker 2.0/${endpoint}`
-        : `/investyx/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     useEffect(() => {
         if (open && tab === 'history') {

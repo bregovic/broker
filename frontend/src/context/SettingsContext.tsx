@@ -21,10 +21,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Load settings from server on mount
     useEffect(() => {
         // Adjust URL to match your server path
-        const isDev = import.meta.env.DEV;
-        const url = isDev
-            ? 'http://localhost/Webhry/hollyhop/broker/broker%202.0/api-settings.php'
-            : '/investyx/api-settings.php';
+        const url = '/api/api-settings.php';
 
         axios.get(url).then(res => {
             if (res.data && res.data.success && res.data.settings) {
@@ -39,10 +36,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     const saveSettings = async () => {
-        const isDev = import.meta.env.DEV;
-        const url = isDev
-            ? 'http://localhost/Webhry/hollyhop/broker/broker%202.0/api-settings.php'
-            : '/investyx/api-settings.php';
+        const url = '/api/api-settings.php';
 
         try {
             await axios.post(url, { language, theme });
