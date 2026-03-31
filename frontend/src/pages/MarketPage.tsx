@@ -75,7 +75,6 @@ const ChartModal = ({ open, ticker, currency, companyName, onClose }: { open: bo
     const [loading, setLoading] = useState(false);
     const [period, setPeriod] = useState('1Y');
 
-    const isDev = import.meta.env.DEV;
     const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     const handleRefreshData = async () => {
@@ -193,7 +192,6 @@ const MarketPage = () => {
     const [selectedPeriod, setSelectedPeriod] = useState<string>('smart');
 
 
-    const isDev = import.meta.env.DEV;
     const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     const toggleWatch = async (ticker: string) => {
