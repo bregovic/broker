@@ -84,7 +84,12 @@ try {
             change_amount DECIMAL(18, 8),
             exchange VARCHAR(50),
             asset_type VARCHAR(20),
-            high_52w DECIMAL(18, 8), low_52w DECIMAL(18, 8), ema_212 DECIMAL(18, 8), resilience_score INTEGER
+            high_52w DECIMAL(18, 8), 
+            low_52w DECIMAL(18, 8), 
+            all_time_high DECIMAL(18, 8),
+            all_time_low DECIMAL(18, 8),
+            ema_212 DECIMAL(18, 8), 
+            resilience_score INTEGER
         )",
         'rates' => "CREATE TABLE rates (
             currency VARCHAR(10) NOT NULL,
