@@ -112,6 +112,12 @@ try {
         )"
     ];
 
+    // Pro jistotu smažeme tabulky, které se nám v průběhu vývoje změnily, 
+    // aby se vytvořily znovu se správnou strukturou (v produkci by se dělala migrace, 
+    // ale tady u testu je čistý reset jistota).
+    $pdo->exec("DROP TABLE IF EXISTS user_settings");
+    $pdo->exec("DROP TABLE IF EXISTS translations");
+
     foreach ($tables as $name => $sql) {
         echo "Creating table '$name'... ";
         $pdo->exec($sql);
