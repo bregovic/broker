@@ -6,6 +6,15 @@ use Broker\V3\Import\TransactionDTO;
 
 class RevolutTradingPdfParser extends AbstractParser {
     
+    private array $monthMap = [
+        'jan' => '01', 'feb' => '02', 'mar' => '03', 'apr' => '04', 'may' => '05', 'jun' => '06',
+        'jul' => '07', 'aug' => '08', 'sep' => '09', 'oct' => '10', 'nov' => '11', 'dec' => '12',
+        'led' => '01', 'úno' => '02', 'bře' => '03', 'dub' => '04', 'kvě' => '05', 'čvn' => '06',
+        'čvc' => '07', 'srp' => '08', 'zář' => '09', 'říj' => '10', 'lis' => '11', 'pro' => '12',
+        'leden' => '01', 'únor' => '02', 'březen' => '03', 'duben' => '04', 'květen' => '05', 'červen' => '06',
+        'červenec' => '07', 'srpen' => '08', 'září' => '09', 'říjen' => '10', 'listopad' => '11', 'prosinec' => '12'
+    ];
+
     public function getName(): string {
         return "Revolut Trading PDF";
     }
@@ -16,87 +25,97 @@ class RevolutTradingPdfParser extends AbstractParser {
 
     public function parse(string $content): array {
         $transactions = [];
-        $lines = explode("\n", $content);
+        
+        // Clean and Normalize like the JS version
+        $cleanText = str_replace("\u{00A0}", ' ', $content);
+        $cleanText = preg_replace('/\s{2,}/', ' ', $cleanText);
+        
+        // Split by Date (SUPER-ROBUST JS METHOD)
+        // Matches: DD MMM YYYY | DD. MM. YYYY | DD MMM YYYY HH:MM:SS GMT
+        $splitRegex = '/\s(?=(?:\d{1,2}\s[\w\x{00C0}-\x{024F}]{2,}\s\d{4}\s\d{2}:\d{2}:\d{2}\sGMT)|(?:\d{1,2}\s[\w\x{00C0}-\x{024F}]{2,}\s\d{4})|(?:\d{1,2}\.\s*\d{1,2}\.\s*\d{4}))/u';
+        $chunks = preg_split($splitRegex, $cleanText);
 
-        // Debug: Log texture overview for refinement (tmp for dev)
-        // file_put_contents(__DIR__ . '/debug_last_pdf.txt', substr($content, 0, 5000));
+        foreach ($chunks as $chunk) {
+            $chunk = trim($chunk);
+            if (empty($chunk)) continue;
 
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if (empty($line)) continue;
+            $date = $this->extractDate($chunk);
+            if (!$date) continue;
 
-            // 1. REFRESHED TRADING REGEX (More flexible for Czech dates and commas)
-            // Pattern: [Date] [Ticker] [Type] [Quantity] [Price] [Currency]
-            // Example CS: 2021-02-17 AAPL Nákup 1,50 150,00 USD
-            // Example CS: 17. úno. 2021 AAPL Nákup 1,50 150,00 USD
-            $datePattern = '((\d{4}-\d{2}-\d{2})|(\d{1,2}\.\s+\w+\.?\s+\d{4}))';
-            $numPattern = '([\d\s]+[,.]\d+)'; // Handles "1 234,56" or "123.45"
-            $tickerPattern = '([A-Z0-9^.]+)';
-            $typePattern = '(Buy|Sell|Nákup|Prodej|Market Buy|Limit Buy|Market Sell|Limit Sell)';
+            // --- TRADE LOGIC (Ported from JS Regex) ---
+            // Pattern: Ticker Trade/Obchod - Market/Limit Qty Currency Price Side Currency Value ...
+            $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\s]+)\s+([A-Z]{3})\s*([0-9.,\s]+)\s+(Buy|Sell|Nákup|Prodej)\s+([A-Z]{3})\s*([0-9.,\s\-]+)\s+([A-Z]{3})\s*([0-9.,\s\-]+)/iu';
             
-            $masterPattern = '/' . $datePattern . '\s+' . $tickerPattern . '\s+' . $typePattern . '.*?\s+' . $numPattern . '\s+' . $numPattern . '\s+([A-Z]{3})/ui';
-
-            if (preg_match($masterPattern, $line, $matches)) {
-                // Matches: 1:full_date, 4:ticker, 5:type, 6:qty, 7:total, 8:curr
-                $transactions[] = $this->createTransaction(
-                    $matches[1], 
-                    $matches[4], 
-                    $matches[5], 
-                    str_replace(',', '.', $matches[6]), 
-                    str_replace(',', '.', $matches[7]), 
-                    $matches[8]
-                );
+            if (preg_match($tradeRegex, $chunk, $matches)) {
+                $ticker = $matches[1];
+                $qty = $this->parseNumber($matches[2]);
+                $price = $this->parseNumber($matches[4]);
+                $side = $matches[5];
+                $total = $this->parseNumber($matches[7]);
+                $currency = $matches[8]; // Resulting currency
+                
+                $transactions[] = $this->createTransaction($date, $ticker, $side, $qty, $total, $currency, $chunk);
                 continue;
             }
-            
-            // 2. DIVIDEND REGEX
-            if (preg_match('/' . $datePattern . '\s+' . $tickerPattern . '\s+(Dividend|Dividenda).*?\s+' . $numPattern . '\s+([A-Z]{3})/ui', $line, $matches)) {
-                 $transactions[] = $this->createTransaction(
-                    $matches[1], 
-                    $matches[4], 
-                    'DIVIDEND', 
-                    1, 
-                    str_replace(',', '.', $matches[5]), 
-                    $matches[6]
-                );
+
+            // --- DIVIDEND LOGIC ---
+            $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+(USD|EUR|GBP|CZK)\s*([0-9.,\s]+)/iu';
+            if (preg_match($divRegex, $chunk, $matches)) {
+                $transactions[] = $this->createTransaction($date, $matches[1], 'DIVIDEND', 1, $this->parseNumber($matches[3]), $matches[2], $chunk);
             }
         }
 
         return $transactions;
     }
 
-    private function createTransaction($date, $ticker, $type, $qty, $total, $currency, $notes = '', $price = null): TransactionDTO {
-        $dto = new TransactionDTO();
-        
-        // Basic date clean
-        $dto->date = $this->normalizeDate($date);
-        $dto->ticker = $ticker;
-        
-        // Normalize type
-        $t = strtoupper($type);
-        if (mb_stripos($t, 'Nákup') !== false || mb_stripos($t, 'Buy') !== false) $dto->type = 'BUY';
-        elseif (mb_stripos($t, 'Prodej') !== false || mb_stripos($t, 'Sell') !== false) $dto->type = 'SELL';
-        elseif (mb_stripos($t, 'Dividend') !== false) $dto->type = 'DIVIDEND';
-        else $dto->type = $t;
-
-        $dto->quantity = (float)preg_replace('/[^\d.]/', '', $qty);
-        $totalVal = (float)preg_replace('/[^\d.]/', '', $total);
-        $dto->pricePerUnit = (float)($price ?: ($dto->quantity ? abs($totalVal / $dto->quantity) : 0));
-        $dto->currency = $currency;
-        $dto->totalAmount = $totalVal;
-        $dto->source_broker = 'Revolut';
-        $dto->metadata = ['notes' => $notes, 'source' => 'RevolutTradingPdfParser', 'raw_type' => $type];
-        $dto->brokerTradeId = "REV_STOCK_" . md5($dto->date . $ticker . $dto->type . $dto->quantity . $dto->totalAmount);
-        
-        return $dto;
+    private function extractDate(string $chunk): ?string {
+        // 1. Timestamp GMT
+        if (preg_match('/(\d{1,2})\s([\w\x{00C0}-\x{024F}]{2,})\s(\d{4})\s\d{2}:\d{2}:\d{2}\sGMT/u', $chunk, $m)) {
+            return $this->formatDateStr($m[1], $m[2], $m[3]);
+        }
+        // 2. EN/CZ Simple (17 Feb 2021)
+        if (preg_match('/(\d{1,2})\s([\w\x{00C0}-\x{024F}]{2,})\s(\d{4})/u', $chunk, $m)) {
+            return $this->formatDateStr($m[1], $m[2], $m[3]);
+        }
+        // 3. Numeric (17. 2. 2021)
+        if (preg_match('/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/', $chunk, $m)) {
+            return sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
+        }
+        return null;
     }
 
-    private function normalizeDate(string $rawDate): string {
-        // Try YYYY-MM-DD
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) return $rawDate;
+    private function formatDateStr($day, $monthStr, $year): string {
+        $m = mb_strtolower(trim($monthStr, '.'));
+        $m = mb_substr($m, 0, 3);
+        $month = $this->monthMap[$m] ?? '01';
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+
+    private function parseNumber(string $str): float {
+        $clean = preg_replace('/\s+/', '', $str); // No spaces
+        $clean = str_replace(',', '.', $clean);
+        return (float)$clean;
+    }
+
+    private function createTransaction($date, $ticker, $type, $qty, $total, $currency, $chunk): TransactionDTO {
+        $dto = new TransactionDTO();
+        $dto->date = $date;
+        $dto->ticker = $ticker;
         
-        // Handle Czech stuff like "17. úno. 2021" -> convert to sth strtotime likes maybe?
-        // For now, if it fails, return raw or today to avoid crash, but better to keep raw
-        return $rawDate; 
+        $t = mb_strtoupper($type);
+        if (mb_stripos($t, 'NÁKUP') !== false || mb_stripos($t, 'BUY') !== false) $dto->type = 'BUY';
+        elseif (mb_stripos($t, 'PRODEJ') !== false || mb_stripos($t, 'SELL') !== false) $dto->type = 'SELL';
+        elseif (mb_stripos($t, 'DIVIDEND') !== false) $dto->type = 'DIVIDEND';
+        else $dto->type = $t;
+
+        $dto->quantity = abs($qty);
+        $dto->totalAmount = abs($total);
+        $dto->pricePerUnit = $qty ? abs($total / $qty) : 0;
+        $dto->currency = strtoupper($currency);
+        $dto->source_broker = 'Revolut';
+        $dto->metadata = ['source' => 'RevolutTradingPdfParser', 'raw_chunk' => substr($chunk, 0, 200)];
+        $dto->brokerTradeId = "REV_STOCK_" . md5($date . $ticker . $dto->type . $qty . $total);
+        
+        return $dto;
     }
 }
