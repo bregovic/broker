@@ -10,8 +10,10 @@ RUN npm run build
 FROM trafex/php-nginx:3.5.0
 USER root
 
-# Instalace PostgreSQL ovladačů pro PHP
+# Instalace DB ovladačů pro PHP (MySQL a PostgreSQL)
 RUN apk add --no-cache \
+    php83-pdo_mysql \
+    php83-mysqlnd \
     php83-pdo_pgsql \
     php83-pgsql
 
