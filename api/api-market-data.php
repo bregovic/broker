@@ -18,7 +18,6 @@ try {
 }
 
 // Fetch Market Data
-// Similar logic to market.php but cleaner query
 // Resolve User for Watchlist
 function resolveUserId() {
     $candidates = ['user_id','uid','userid','id'];
@@ -35,10 +34,12 @@ function resolveUserId() {
 $userId = resolveUserId();
 
 // 1. Get watchlist
-$watch = $pdo->query("SELECT ticker FROM watch WHERE user_id=$userId")->fetchAll(PDO::FETCH_COLUMN);
+$watch = $pdo->prepare("SELECT ticker FROM watch WHERE user_id = ?");
+$watch->execute([$userId]);
+$watchList = $watch->fetchAll(PDO::FETCH_COLUMN);
 
 // 2. Get tickers with meta
-// Improved query: Source tickers from transactions + watch, join mapping/quotes
+// Improved query for PostgreSQL
 $sql = "SELECT DISTINCT src.id as ticker, 
                COALESCE(t.company_name, src.id) as company_name, 
                COALESCE(l.current_price, q.price) as current_price, 
@@ -54,22 +55,25 @@ $sql = "SELECT DISTINCT src.id as ticker,
                l.last_fetched,
                CASE WHEN w.ticker IS NOT NULL THEN 1 ELSE 0 END as is_watched
         FROM (
-            SELECT DISTINCT id FROM transactions WHERE user_id=:uid
+            SELECT id FROM transactions WHERE user_id = :uid
             UNION 
-            SELECT ticker as id FROM watch WHERE user_id=:uid
+            SELECT ticker as id FROM watch WHERE user_id = :uid
             UNION
             SELECT id FROM live_quotes WHERE status = 'active' OR status IS NULL
         ) src
-        LEFT JOIN ticker_mapping t ON CONVERT(src.id USING utf8mb4) = CONVERT(t.ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci
-        LEFT JOIN live_quotes l ON CONVERT(src.id USING utf8mb4) = CONVERT(l.id USING utf8mb4) COLLATE utf8mb4_unicode_ci
-        LEFT JOIN tickers_history q ON CONVERT(src.id USING utf8mb4) = CONVERT(q.ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AND q.date = (SELECT MAX(date) FROM tickers_history WHERE CONVERT(ticker USING utf8mb4)=CONVERT(src.id USING utf8mb4) COLLATE utf8mb4_unicode_ci)
-        LEFT JOIN watch w ON CONVERT(src.id USING utf8mb4) = CONVERT(w.ticker USING utf8mb4) COLLATE utf8mb4_unicode_ci AND w.user_id=:uid
+        LEFT JOIN ticker_mapping t ON src.id = t.ticker
+        LEFT JOIN live_quotes l ON src.id = l.ticker
+        LEFT JOIN (
+            SELECT ticker, price, history_date
+            FROM tickers_history
+            WHERE (ticker, history_date) IN (SELECT ticker, MAX(history_date) FROM tickers_history GROUP BY ticker)
+        ) q ON src.id = q.ticker
+        LEFT JOIN watch w ON src.id = w.ticker AND w.user_id = :uid
         WHERE src.id NOT LIKE 'CASH_%' 
           AND src.id NOT LIKE 'FEE_%' 
           AND src.id NOT LIKE 'FX_%' 
           AND src.id NOT LIKE 'CORP_%'
-    ORDER BY src.id ASC
-";
+        ORDER BY src.id ASC";
 
 try {
     $stmt = $pdo->prepare($sql);
