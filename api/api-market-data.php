@@ -55,11 +55,11 @@ $sql = "SELECT DISTINCT src.id as ticker,
                l.last_fetched,
                CASE WHEN w.ticker IS NOT NULL THEN 1 ELSE 0 END as is_watched
         FROM (
-            SELECT id FROM transactions WHERE user_id = :uid
+            SELECT ticker FROM transactions WHERE user_id = :uid
             UNION 
-            SELECT ticker as id FROM watch WHERE user_id = :uid
+            SELECT ticker FROM watch WHERE user_id = :uid
             UNION
-            SELECT id FROM live_quotes WHERE status = 'active' OR status IS NULL
+            SELECT ticker FROM live_quotes
         ) src
         LEFT JOIN ticker_mapping t ON src.id = t.ticker
         LEFT JOIN live_quotes l ON src.id = l.ticker

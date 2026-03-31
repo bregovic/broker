@@ -30,30 +30,35 @@ try {
         )",
 
         'transactions' => "CREATE TABLE IF NOT EXISTS transactions (
-            rec_id $pk,
+            trans_id $pk,
+            user_id INTEGER,
+            date DATE NOT NULL,
             ticker VARCHAR(20) NOT NULL,
-            transaction_date DATE NOT NULL,
-            type VARCHAR(20) NOT NULL,
-            quantity DECIMAL(18, 8) DEFAULT 0,
-            price_per_unit DECIMAL(18, 8) DEFAULT 0,
+            trans_type VARCHAR(20) NOT NULL,
+            amount DECIMAL(18, 8) DEFAULT 0,
+            price DECIMAL(18, 8) DEFAULT 0,
             currency VARCHAR(10) NOT NULL,
-            fee DECIMAL(18, 8) DEFAULT 0,
-            total_amount DECIMAL(18, 8) NOT NULL,
-            source_broker VARCHAR(50),
+            fees DECIMAL(18, 8) DEFAULT 0,
+            amount_czk DECIMAL(18, 8) NOT NULL,
+            ex_rate DECIMAL(18, 8) DEFAULT 1,
+            amount_cur DECIMAL(18, 8) DEFAULT 0,
+            platform VARCHAR(50),
+            product_type VARCHAR(50),
             broker_trade_id VARCHAR(100),
             metadata $json,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
 
         'dividends' => "CREATE TABLE IF NOT EXISTS dividends (
-            rec_id $pk,
+            div_id $pk,
+            user_id INTEGER,
             ticker VARCHAR(20) NOT NULL,
-            ex_date DATE,
-            pay_date DATE NOT NULL,
-            gross_amount DECIMAL(18, 8) NOT NULL,
-            tax_amount DECIMAL(18, 8) DEFAULT 0,
-            net_amount DECIMAL(18, 8) NOT NULL,
+            date DATE NOT NULL,
+            amount DECIMAL(18, 8) DEFAULT 0,
+            tax DECIMAL(18, 8) DEFAULT 0,
+            net DECIMAL(18, 8) DEFAULT 0,
             currency VARCHAR(10) NOT NULL,
+            platform VARCHAR(50),
             broker_dividend_id VARCHAR(100),
             metadata $json,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -138,11 +143,15 @@ try {
     // Pro jistotu smažeme tabulky, které se nám v průběhu vývoje změnily, 
     // aby se vytvořily znovu se správnou strukturou (v produkci by se dělala migrace, 
     // ale tady u testu je čistý reset jistota).
+    // Pro jistotu smažeme tabulky, které se nám v průběhu vývoje změnily, 
+    // aby se vytvořily znovu se správnou strukturou.
     $pdo->exec("DROP TABLE IF EXISTS user_settings");
     $pdo->exec("DROP TABLE IF EXISTS translations");
-    // $pdo->exec("DROP TABLE IF EXISTS currencies"); // Tyhle zatím mazat nebudeme, jen vytvoříme
-    // $pdo->exec("DROP TABLE IF EXISTS brokers");
-    // $pdo->exec("DROP TABLE IF EXISTS asset_classes");
+    $pdo->exec("DROP TABLE IF EXISTS transactions");
+    $pdo->exec("DROP TABLE IF EXISTS dividends");
+    $pdo->exec("DROP TABLE IF EXISTS live_quotes");
+    $pdo->exec("DROP TABLE IF EXISTS tickers_history");
+    $pdo->exec("DROP TABLE IF EXISTS watch");
 
     foreach ($tables as $name => $sql) {
         echo "Creating table '$name'... ";

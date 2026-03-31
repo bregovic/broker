@@ -30,8 +30,8 @@ try {
     exit;
 }
     
-    // Updated query to include ex_rate and amount_cur
-    $sql = "SELECT trans_id, date, id as ticker, trans_type, amount, price, currency, amount_czk, platform, product_type, fees, ex_rate, amount_cur
+    // Updated query to use ticker instead of id
+    $sql = "SELECT trans_id, date, ticker, trans_type, amount, price, currency, amount_czk, platform, product_type, fees, ex_rate, amount_cur
             FROM transactions
             WHERE user_id = ?
             ORDER BY date DESC, trans_id DESC
