@@ -128,7 +128,52 @@ try {
         echo "\nDefault admin user created (admin / admin123).\n";
     }
 
-    echo "\nDatabase initialization complete!\n";
+    // 4. Seznam základních popisků (Translations)
+    $labels = [
+        ['cs', 'login_title', 'Přihlášení'],
+        ['en', 'login_title', 'Login'],
+        ['cs', 'email_label', 'E-mailová adresa'],
+        ['en', 'email_label', 'Email Address'],
+        ['cs', 'password_label', 'Heslo'],
+        ['en', 'password_label', 'Password'],
+        ['cs', 'login_btn', 'Přihlásit se'],
+        ['en', 'login_btn', 'Sign In'],
+        ['cs', 'register_link', 'Nemáte účet? Zaregistrujte se'],
+        ['en', 'register_link', 'Don\'t have an account? Register'],
+        ['cs', 'register_title', 'Registrace'],
+        ['en', 'register_title', 'Registration'],
+        ['cs', 'name_label', 'Jméno'],
+        ['en', 'name_label', 'Name'],
+        ['cs', 'register_btn', 'Vytvořit účet'],
+        ['en', 'register_btn', 'Create Account'],
+        ['cs', 'back_to_login', 'Zpět na přihlášení'],
+        ['en', 'back_to_login', 'Back to login'],
+        ['cs', 'loading', 'Načítám...'],
+        ['en', 'loading', 'Loading...'],
+        ['cs', 'save', 'Uložit'],
+        ['en', 'save', 'Save'],
+        ['cs', 'cancel', 'Zrušit'],
+        ['en', 'cancel', 'Cancel'],
+        ['cs', 'delete', 'Smazat'],
+        ['en', 'delete', 'Delete'],
+        ['cs', 'dashboard', 'Přehled'],
+        ['en', 'dashboard', 'Dashboard'],
+        ['cs', 'transactions', 'Transakce'],
+        ['en', 'transactions', 'Transactions'],
+        ['cs', 'import', 'Import'],
+        ['en', 'import', 'Import'],
+        ['cs', 'settings', 'Nastavení'],
+        ['en', 'settings', 'Settings']
+    ];
+
+    $stmt = $pdo->prepare("INSERT INTO translations (lang, label_key, translation) VALUES (?, ?, ?) ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation");
+    foreach ($labels as $label) {
+        $stmt->execute($label);
+    }
+    echo "Labels initialized.<br>";
+
+    echo "<h3>Database initialization complete!</h3>";
+    echo "<p>You can now log in with: <b>admin / admin123</b></p>";
 
 } catch (Exception $e) {
     die("\nERROR: " . $e->getMessage());

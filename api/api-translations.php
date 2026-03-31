@@ -4,44 +4,34 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-// 1. Konfigurace a DB
-$envPaths = [
-    __DIR__ . '/env.local.php',
-    __DIR__ . '/../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__ . '/../../env.local.php',
-    __DIR__ . '/php/env.local.php',
-    __DIR__ . '/env.php',
-    __DIR__ . '/../env.php',
-    __DIR__ . '/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
+require_once __DIR__ . '/config.php';
 
-foreach ($envPaths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        break;
-    }
-}
-
-// Zjistíme jazyk z GET parametru, nebo session, nebo default 'cs'
+// Zjistíme jazyk z GET parametru
 $lang = $_GET['lang'] ?? 'cs';
 if (!in_array($lang, ['cs', 'en'])) {
     $lang = 'cs';
 }
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+    $pdo = get_pdo();
 
-    // Vybereme překlady pro daný jazyk z nové struktury
-    $stmt = $pdo->prepare("SELECT label_key, translation FROM translations WHERE language = ?");
+    // Vybereme překlady pro daný jazyk
+    // V tabulce v init_broker.php používáme 'lang'
+    $stmt = $pdo->prepare("SELECT label_key, translation FROM translations WHERE lang = ?");
     $stmt->execute([$lang]);
     
     $result = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $result[$row['label_key']] = $row['translation'];
+    }
+
+    // Pokud je prázdno, zkusíme aspoň základní fallback
+    if (empty($result)) {
+        $result = [
+            "loading" => "Načítám...",
+            "login" => "Přihlásit se",
+            "register" => "Registrace"
+        ];
     }
 
     echo json_encode([
@@ -50,7 +40,8 @@ try {
         'translations' => $result
     ]);
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
+    http_response_code(500);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
 ?>

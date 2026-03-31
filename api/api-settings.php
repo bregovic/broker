@@ -4,26 +4,10 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-// 1. Config logic
-$envPaths = [
-    __DIR__ . '/env.local.php',
-    __DIR__ . '/../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__ . '/../../env.local.php',
-    __DIR__ . '/php/env.local.php',
-    __DIR__ . '/env.php',
-    __DIR__ . '/../env.php',
-    __DIR__ . '/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-foreach ($envPaths as $path) {
-    if (file_exists($path)) { require_once $path; break; }
-}
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+    $pdo = get_pdo();
 
     // Hardcoded User ID 1 for now if no auth logic is passed
     // V reálu bychom měli brát $_SESSION['user_id'] nebo podobně
@@ -35,8 +19,9 @@ try {
         $lang = $input['language'] ?? 'cs';
         $theme = $input['theme'] ?? 'light';
 
+        // PostgreSQL syntax: ON CONFLICT
         $stmt = $pdo->prepare("INSERT INTO user_settings (user_id, language, theme) VALUES (?, ?, ?)
-                               ON DUPLICATE KEY UPDATE language = VALUES(language), theme = VALUES(theme)");
+                               ON CONFLICT (user_id) DO UPDATE SET language = EXCLUDED.language, theme = EXCLUDED.theme");
         $stmt->execute([$userId, $lang, $theme]);
 
         echo json_encode(['success' => true]);
@@ -55,7 +40,8 @@ try {
         }
     }
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
+    http_response_code(500);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
 ?>
