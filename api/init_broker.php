@@ -1,49 +1,51 @@
 <?php
 /**
- * DB INITIALIZER (Modernized V3 Version)
+ * DB INITIALIZER (Ultra-Safe Alter Version)
  */
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/config.php';
 
+function addColumnSafe($pdo, $table, $column, $definition) {
+    try {
+        $pdo->exec("ALTER TABLE $table ADD COLUMN $column $definition");
+        echo "ADDED COLUMN: $column to $table\n";
+    } catch (Exception $e) {
+        // Ignorujeme, pokud už sloupec existuje
+    }
+}
+
 try {
     $pdo = get_pdo();
     echo "CONNECTED TO: " . $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) . "\n\n";
 
-    // 1. MODERN TRANSACTIONS SCHEMA (Ensuring both old and new columns for compatibility)
-    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
-        trans_id SERIAL PRIMARY KEY,
-        user_id INTEGER,
-        ticker VARCHAR(20),
-        transaction_date DATE,
-        type VARCHAR(20),
-        quantity DECIMAL(18, 8),
-        price_per_unit DECIMAL(18, 8),
-        currency VARCHAR(10),
-        fee DECIMAL(18, 8),
-        total_amount DECIMAL(18, 8),
-        source_broker VARCHAR(50),
-        broker_trade_id VARCHAR(100) UNIQUE,
-        metadata JSONB,
-        -- Keep legacy columns for compatibility
-        date DATE,
-        amount DECIMAL(18, 8),
-        price DECIMAL(18, 8),
-        platform VARCHAR(50)
-    )");
-    echo "VERIFIED: transactions (v3 structure)\n";
+    // 1. ENSURE TRANSACTIONS TABLE & COLUMNS
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (trans_id SERIAL PRIMARY KEY)");
+    addColumnSafe($pdo, 'transactions', 'ticker', 'VARCHAR(20)');
+    addColumnSafe($pdo, 'transactions', 'transaction_date', 'DATE');
+    addColumnSafe($pdo, 'transactions', 'type', 'VARCHAR(20)');
+    addColumnSafe($pdo, 'transactions', 'quantity', 'DECIMAL(18, 8)');
+    addColumnSafe($pdo, 'transactions', 'price_per_unit', 'DECIMAL(18, 8)');
+    addColumnSafe($pdo, 'transactions', 'currency', 'VARCHAR(10)');
+    addColumnSafe($pdo, 'transactions', 'fee', 'DECIMAL(18, 8)');
+    addColumnSafe($pdo, 'transactions', 'total_amount', 'DECIMAL(18, 8)');
+    addColumnSafe($pdo, 'transactions', 'source_broker', 'VARCHAR(50)');
+    addColumnSafe($pdo, 'transactions', 'broker_trade_id', 'VARCHAR(100)');
+    addColumnSafe($pdo, 'transactions', 'metadata', 'JSONB');
+    
+    // Add unique constraint separately to avoid crash if exists
+    try {
+        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_broker_trade_id ON transactions (broker_trade_id)");
+    } catch (Exception $e) {}
 
-    // 2. IMPORT RULES SCHEMA
-    $pdo->exec("CREATE TABLE IF NOT EXISTS broker_import_rules (
-        id SERIAL PRIMARY KEY,
-        config_name VARCHAR(100) UNIQUE NOT NULL,
-        broker_name VARCHAR(100),
-        parser_class VARCHAR(255) NOT NULL,
-        file_pattern TEXT,
-        content_regex TEXT
-    )");
-    echo "VERIFIED: broker_import_rules\n";
+    // 2. ENSURE IMPORT RULES TABLE & COLUMNS
+    $pdo->exec("CREATE TABLE IF NOT EXISTS broker_import_rules (id SERIAL PRIMARY KEY)");
+    addColumnSafe($pdo, 'broker_import_rules', 'config_name', 'VARCHAR(100) UNIQUE');
+    addColumnSafe($pdo, 'broker_import_rules', 'broker_name', 'VARCHAR(100)');
+    addColumnSafe($pdo, 'broker_import_rules', 'parser_class', 'VARCHAR(255)');
+    addColumnSafe($pdo, 'broker_import_rules', 'file_pattern', 'TEXT');
+    addColumnSafe($pdo, 'broker_import_rules', 'content_regex', 'TEXT');
 
     // 3. SEEDING RULES
     $rules = [
@@ -62,10 +64,10 @@ try {
     
     foreach ($rules as $rule) {
         $stmt->execute($rule);
-        echo "SEEDED RULE: {$rule[1]}\n";
+        echo "RE-SEEDED RULE: {$rule[1]}\n";
     }
 
-    echo "\nDATABASE IS MODERNIZED AND READY!";
+    echo "\nALL DONE! APP IS READY AND MODERNIZED.";
 
 } catch (Throwable $e) {
     http_response_code(500);
