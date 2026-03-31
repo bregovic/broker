@@ -126,7 +126,8 @@ try {
         ['import.add_btn', 'Přidat soubor'], ['import.working', 'Zpracovávám...'],
         ['import.unsupported.title', 'Nepodporovaný formát'], ['import.unsupported.desc', 'Tento formát zatím neumíme automaticky parsovat.']
     ];
-    $stmtT = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) ON CONFLICT DO NOTHING");
+    $stmtT = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) 
+                            ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation");
     foreach ($labels as $l) $stmtT->execute($l);
 
     $pdo->exec("INSERT INTO brokers (name, parser_type) VALUES 
