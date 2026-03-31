@@ -92,10 +92,10 @@ try {
         )",
 
         'user_settings' => "CREATE TABLE IF NOT EXISTS user_settings (
-            user_id INT NOT NULL,
-            setting_key VARCHAR(100) NOT NULL,
-            setting_value $text,
-            PRIMARY KEY (user_id, setting_key)
+            user_id INTEGER PRIMARY KEY,
+            lang VARCHAR(5) DEFAULT 'cs',
+            theme VARCHAR(20) DEFAULT 'dark',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
 
         'tickers_history' => "CREATE TABLE IF NOT EXISTS tickers_history (
