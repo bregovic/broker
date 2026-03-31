@@ -17,34 +17,35 @@ if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: 'root');
 if (!defined('DB_PASS')) define('DB_PASS', getenv('DB_PASS') ?: '');
 if (!defined('DB_PORT')) define('DB_PORT', getenv('DB_PORT') ?: '3306');
 
-// 3. Railway DATABASE_URL support (optional)
+// 3. Railway DATABASE_URL support
 if (getenv('DATABASE_URL')) {
     $url = parse_url(getenv('DATABASE_URL'));
-    if (isset($url['host'])) define('DB_HOST_URL', $url['host']);
-    if (isset($url['user'])) define('DB_USER_URL', $url['user']);
-    if (isset($url['pass'])) define('DB_PASS_URL', $url['pass']);
-    if (isset($url['path'])) define('DB_NAME_URL', substr($url['path'], 1));
+    if (isset($url['scheme'])) define('DB_TYPE_URL', $url['scheme']);
+    if (isset($url['host']))   define('DB_HOST_URL', $url['host']);
+    if (isset($url['port']))   define('DB_PORT_URL', $url['port']);
+    if (isset($url['user']))   define('DB_USER_URL', $url['user']);
+    if (isset($url['pass']))   define('DB_PASS_URL', $url['pass']);
+    if (isset($url['path']))   define('DB_NAME_URL', substr($url['path'], 1));
 }
 
 /**
  * PDO Connection Helper
  */
 function get_pdo() {
+    $type = defined('DB_TYPE_URL') ? DB_TYPE_URL : 'mysql';
     $host = defined('DB_HOST_URL') ? DB_HOST_URL : DB_HOST;
+    $port = defined('DB_PORT_URL') ? DB_PORT_URL : DB_PORT;
     $db   = defined('DB_NAME_URL') ? DB_NAME_URL : DB_NAME;
     $user = defined('DB_USER_URL') ? DB_USER_URL : DB_USER;
     $pass = defined('DB_PASS_URL') ? DB_PASS_URL : DB_PASS;
     
-    // Determine driver - Default to mysql for legacy compatibility
-    $driver = 'mysql';
-    if (strpos($host, 'postgres') !== false || getenv('DB_TYPE') === 'pgsql') {
-        $driver = 'pgsql';
-    }
+    // Normalize driver name
+    $driver = (strpos($type, 'postgres') !== false || $type === 'pgsql') ? 'pgsql' : 'mysql';
 
-    $dsn = "$driver:host=$host;dbname=$db;charset=utf8";
     if ($driver === 'pgsql') {
-        // Postgres uses slightly different DSN
-        $dsn = "pgsql:host=$host;dbname=$db";
+        $dsn = "pgsql:host=$host;port=$port;dbname=$db";
+    } else {
+        $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8";
     }
 
     return new PDO($dsn, $user, $pass, [
