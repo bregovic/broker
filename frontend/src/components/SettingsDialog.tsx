@@ -145,7 +145,7 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                             <div className={styles.adminBox}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
                                     <Button icon={<ArrowLeftRegular />} onClick={() => setLookupTable(null)} appearance="subtle" />
-                                    <Text size={500} weight="bold">{t(`admin.${lookupTable}`) || lookupTable}</Text>
+                                    <Text size={500} weight="bold">{t(lookupTable.startsWith('admin.') ? lookupTable : `admin.${lookupTable}`) || lookupTable}</Text>
                                     <div style={{ flexGrow: 1 }} />
                                     <Button icon={<AddRegular />} appearance="primary" size="small">Přidat</Button>
                                 </div>

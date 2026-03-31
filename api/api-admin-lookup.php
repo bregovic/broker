@@ -45,14 +45,21 @@ try {
         $id = $_GET['id'] ?? null;
         if (!$id) throw new Exception("ID is required for deletion");
 
-        // Check for dependencies before deleting
+        // First, get the name of the item being deleted to check against string-based transaction columns
+        $getStmt = $pdo->prepare("SELECT name FROM $table WHERE id = ?");
+        $getStmt->execute([$id]);
+        $itemName = $getStmt->fetchColumn();
+
+        if (!$itemName) throw new Exception("Záznam nebyl nalezen.");
+
+        // Check for dependencies (legacy transactions use product_type and platform strings)
         if ($table === 'brokers') {
-            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE broker_id = ?");
-            $check->execute([$id]);
+            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE platform = ?");
+            $check->execute([$itemName]);
             if ($check->fetchColumn() > 0) throw new Exception("Nelze smazat - existují transakce u tohoto poskytovatele.");
         } elseif ($table === 'asset_types') {
-            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE asset_type_id = ?");
-            $check->execute([$id]);
+            $check = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE product_type = ?");
+            $check->execute([$itemName]);
             if ($check->fetchColumn() > 0) throw new Exception("Nelze smazat - existují transakce s tímto typem aktiva.");
         }
 
