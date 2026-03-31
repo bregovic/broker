@@ -23,8 +23,7 @@ import {
     TableRow,
     TableHeaderCell,
     TableBody,
-    TableCell,
-    TableSelectionCell
+    TableCell
 } from '@fluentui/react-components';
 import { useTranslation } from '../context/TranslationContext';
 import { useState, useEffect } from 'react';
