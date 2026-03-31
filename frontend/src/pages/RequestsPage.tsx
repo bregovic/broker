@@ -318,10 +318,7 @@ const RequestsPage = () => {
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
     // API Helper
-    const isDev = import.meta.env.DEV;
-    const getApiUrl = (endpoint: string) => isDev
-        ? `http://localhost/Webhry/hollyhop/broker/broker 2.0/${endpoint}`
-        : `/api/${endpoint}`;
+    const getApiUrl = (endpoint: string) => `/api/${endpoint}`;
 
     useEffect(() => {
         loadRequests();
