@@ -28,27 +28,44 @@ try {
     echo json_encode(['success'=>false, 'error'=>'DB Connection failed']);
     exit;
 }
-    
-    // 1. Fetch Rates (Updated for new and simplified schema)
-    $rStmt = $pdo->query("SELECT currency, rate, amount FROM rates WHERE (currency, date) IN (SELECT currency, MAX(date) FROM rates GROUP BY currency)");
-    $rates = ['CZK' => 1];
-    while($r = $rStmt->fetch(PDO::FETCH_ASSOC)) {
-        $rates[$r['currency']] = $r['amount'] > 0 ? (float)$r['rate'] / (float)$r['amount'] : 0;
-    }
-    
-    // 2. Fetch Prices (ticker instead of id, price instead of current_price)
-    $quotes = [];
-    $stmtQ = $pdo->query("SELECT ticker, price, currency FROM live_quotes");
-    while($r = $stmtQ->fetch(PDO::FETCH_ASSOC)) {
-         $quotes[$r['ticker']] = ['price'=>(float)$r['price'], 'currency'=>$r['currency']];
-    }
 
-    // 3. Fetch Transactions (ticker instead of id)
-    $sql="SELECT trans_id, date, ticker, amount, price, ex_rate, currency, amount_czk, platform, product_type, trans_type 
-          FROM transactions WHERE user_id = ? ORDER BY date ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$userId]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    // 1. Fetch Rates (Robustly)
+    $rates = ['CZK' => 1];
+    try {
+        $rStmt = $pdo->query("SELECT r.currency, r.rate, r.amount FROM rates r 
+                             INNER JOIN (SELECT currency, MAX(date) as max_date FROM rates GROUP BY currency) m 
+                             ON r.currency = m.currency AND r.date = m.max_date");
+        if ($rStmt) {
+            while($r = $rStmt->fetch(PDO::FETCH_ASSOC)) {
+                $rates[$r['currency']] = (float)$r['amount'] > 0 ? (float)$r['rate'] / (float)$r['amount'] : 0;
+            }
+        }
+    } catch (Throwable $e) { 
+        // Silently continue with default 1:1 if rates fail
+    }
+    
+    // 2. Fetch Prices
+    $quotes = [];
+    try {
+        $stmtQ = $pdo->query("SELECT ticker, price, currency FROM live_quotes");
+        if ($stmtQ) {
+            while($r = $stmtQ->fetch(PDO::FETCH_ASSOC)) {
+                 $quotes[$r['ticker']] = ['price'=>(float)$r['price'], 'currency'=>$r['currency']];
+            }
+        }
+    } catch (Throwable $e) {}
+
+    // 3. Fetch Transactions
+    try {
+        $sql="SELECT trans_id, date, ticker, amount, price, ex_rate, currency, amount_czk, platform, product_type, trans_type 
+              FROM transactions WHERE user_id = ? ORDER BY date ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$userId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        throw $e; // Re-throw to be caught by the main block
+    }
     
     // 4. Aggregate
     $groupBy = $_GET['groupBy'] ?? 'ticker_platform';
