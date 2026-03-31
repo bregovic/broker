@@ -98,6 +98,15 @@ try {
             config_key VARCHAR(100) PRIMARY KEY,
             config_value TEXT,
             description TEXT
+        )",
+        'broker_import_rules' => "CREATE TABLE IF NOT EXISTS broker_import_rules (
+            id SERIAL PRIMARY KEY,
+            broker_id INTEGER REFERENCES brokers(id) ON DELETE CASCADE,
+            config_name VARCHAR(100) NOT NULL,
+            parser_class VARCHAR(255) NOT NULL,
+            file_pattern TEXT,
+            content_patterns JSONB,
+            min_matches INTEGER DEFAULT 1
         )"
     ];
 
@@ -128,6 +137,7 @@ try {
         ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'], ['common.close', 'Zavřít'],
         ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
         ['admin.brokers', 'Poskytovatelé (Služby)'], ['admin.currencies', 'Měny (Kurzovník)'], ['admin.asset_types', 'Kategorie produktů'],
+        ['admin.import_rules', 'Pravidla importu (Discovery)'],
         ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['btn_import', 'Importovat'],
         ['filter_currency', 'Měna'], ['all', 'Vše'], ['locale', 'cs-CZ'],
         ['col_date', 'Datum'], ['col_currency', 'Měna'], ['col_quantity', 'Množství'],
@@ -144,8 +154,20 @@ try {
 
     $pdo->exec("INSERT INTO brokers (name, parser_type) VALUES 
         ('Revolut', 'revolut'), ('Fio banka', 'fio'), ('Coinbase', 'coinbase'), 
-        ('eToro', 'etoro'), ('Trading212', 't212'), ('Degiro', 'degiro') ON CONFLICT DO NOTHING");
+        ('eToro', 'etoro'), ('Trading212', 't212'), ('Degiro', 'degiro'), ('IBKR', 'ibkr') ON CONFLICT DO NOTHING");
     
+    // Seed import rules based on JS recognizers
+    $rules = [
+        ['Revolut', 'Trading PDF', 'Broker\V3\Import\Pdf\RevolutTradingPdfParser', 'revolut.*trading.*\.pdf$', '["Account Statement", "USD Transactions", "Trade - (Market|Limit)", "Custody fee"]', 2],
+        ['Revolut', 'Crypto PDF', 'Broker\V3\Import\Pdf\RevolutCryptoPdfParser', 'revolut.*crypto.*\.pdf$', '["Crypto (Account )?Statement", "Digital Assets Europe Ltd", "Staking rewards"]', 1],
+        ['Revolut', 'Commodity PDF', 'Broker\V3\Import\Pdf\RevolutCommodityPdfParser', 'revolut.*commodity.*\.pdf$', '["Výpis v (XAU|XAG|XPT|XPD)", "Commodity Exchange"]', 1],
+        ['Fio banka', 'Fio PDF', 'Broker\V3\Import\Pdf\FioPdfParser', 'fio.*\.pdf$', '["Fio banka", "Výpis operací", "BCPP"]', 2],
+        ['IBKR', 'IBKR Activity PDF', 'Broker\V3\Import\Pdf\IbkrPdfParser', 'u\*\*\*\d+.*\.pdf$', '["Time Period: .* to", "Beginning Cash Balance", "Ending Cash Balance"]', 2]
+    ];
+    $stmtRule = $pdo->prepare("INSERT INTO broker_import_rules (broker_id, config_name, parser_class, file_pattern, content_patterns, min_matches) 
+                               VALUES ((SELECT id FROM brokers WHERE name = ?), ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING");
+    foreach ($rules as $r) $stmtRule->execute($r);
+
     $pdo->exec("INSERT INTO asset_types (name) VALUES 
         ('Akcie'), ('ETF'), ('Kryptoměny'), ('Komodity'), ('Valuty'), ('Ostatní') ON CONFLICT DO NOTHING");
 

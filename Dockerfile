@@ -15,7 +15,8 @@ RUN apk add --no-cache \
     php83-pdo_mysql \
     php83-mysqlnd \
     php83-pdo_pgsql \
-    php83-pgsql
+    php83-pgsql \
+    poppler-utils
 
 # Kopírujeme Nginx konfiguraci
 COPY nginx.conf /etc/nginx/nginx.conf

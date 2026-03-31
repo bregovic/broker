@@ -28,7 +28,19 @@ import {
 import { useTranslation } from '../context/TranslationContext';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LockClosedRegular, SettingsRegular, DatabaseRegular, GlobeRegular, ArrowLeftRegular, AddRegular, DeleteRegular } from '@fluentui/react-icons';
+import { 
+    LockClosedRegular, 
+    SettingsRegular, 
+    DatabaseRegular, 
+    GlobeRegular, 
+    ArrowLeftRegular, 
+    AddRegular, 
+    DeleteRegular,
+    BuildingRegular,
+    CurrencyDollarEuroRegular,
+    TagRegular,
+    ArrowImportRegular
+} from '@fluentui/react-icons';
 
 const useStyles = makeStyles({
     content: {
@@ -47,6 +59,12 @@ const useStyles = makeStyles({
         padding: '12px',
         border: `1px solid ${tokens.colorNeutralStroke2}`,
         borderRadius: '8px'
+    },
+    adminGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+        gap: '12px',
+        marginTop: '10px'
     },
     adminBox: {
         marginTop: '20px',
@@ -164,9 +182,15 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                                     <TableRow key={idx}>
                                                         <TableCell>
                                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                <Text weight="semibold">{row.name || row.currency}</Text>
+                                                                <Text weight="semibold">{row.name || row.currency || row.config_name}</Text>
                                                                 {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_type}</Text>}
                                                                 {lookupTable === 'currencies' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Zdroj: {row.source || 'CNB'}</Text>}
+                                                                {lookupTable === 'broker_import_rules' && (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Broker: {row.broker_name}</Text>
+                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Třída: {row.parser_class.split('\\').pop()}</Text>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </TableCell>
                                                         <TableCell>
@@ -241,10 +265,11 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                             <div className={styles.section}>
                                                 <Text weight="semibold"><DatabaseRegular style={{ verticalAlign: 'middle', marginRight: '5px' }} /> {t('admin.lookups') || 'Číselníky'}</Text>
-                                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                                    <Button size="small" onClick={() => loadLookup('brokers')}>{t('admin.brokers')}</Button>
-                                                    <Button size="small" onClick={() => loadLookup('currencies')}>{t('admin.currencies')}</Button>
-                                                    <Button size="small" onClick={() => loadLookup('admin.asset_types')}>{t('admin.asset_types')}</Button>
+                                                <div className={styles.adminGrid}>
+                                                    <Button size="large" icon={<BuildingRegular />} onClick={() => loadLookup('brokers')}>{t('admin.brokers')}</Button>
+                                                    <Button size="large" icon={<CurrencyDollarEuroRegular />} onClick={() => loadLookup('currencies')}>{t('admin.currencies')}</Button>
+                                                    <Button size="large" icon={<TagRegular />} onClick={() => loadLookup('asset_types')}>{t('admin.asset_types')}</Button>
+                                                    <Button size="large" icon={<ArrowImportRegular />} onClick={() => loadLookup('broker_import_rules')}>{t('admin.import_rules')}</Button>
                                                 </div>
                                             </div>
 

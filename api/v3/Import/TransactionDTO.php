@@ -14,6 +14,7 @@ class TransactionDTO {
     public float $fee = 0;
     public float $totalAmount = 0;
     public ?string $brokerTradeId = null;
+    public ?string $source_broker = null;
     public array $metadata = [];
 
     public function toArray(): array {
@@ -27,6 +28,7 @@ class TransactionDTO {
             'fee' => $this->fee,
             'total_amount' => $this->totalAmount,
             'broker_trade_id' => $this->brokerTradeId,
+            'source_broker' => $this->source_broker,
             'metadata' => json_encode($this->metadata)
         ];
     }

@@ -1,35 +1,127 @@
 <?php
 namespace Broker\V3\Import;
 
+/**
+ * ImportManager (Modernized Object-Oriented Version)
+ * Handles file discovery using database rules and coordinates parsing.
+ */
 class ImportManager {
-    /** @var AbstractParser[] */
+    private \PDO $pdo;
     private array $parsers = [];
 
-    public function registerParser(AbstractParser $parser): void {
-        $this->parsers[] = $parser;
+    public function __construct(\PDO $pdo) {
+        $this->pdo = $pdo;
     }
 
     /**
-     * Zkusí najít vhodný parser a zpracovat soubor
-     * @return array ['parser' => string, 'transactions' => TransactionDTO[]]
+     * Identifies the broker and config based on rules and processes the file.
      */
-    public function processFile(string $filePath): array {
+    public function processFile(string $filePath, string $originalName = ''): array {
         if (!file_exists($filePath)) {
-            throw new \Exception("Soubor nebyl nalezen: $filePath");
+            throw new \Exception("Soubor nebyl nalezen.");
         }
 
-        $content = file_get_contents($filePath);
-        $filename = basename($filePath);
+        $filename = $originalName ?: basename($filePath);
+        $content = $this->extractContent($filePath, $filename);
+        
+        // 1. DISCOVERY - Find rule using DB
+        $rule = $this->discoverRule($filename, $content);
+        if (!$rule) {
+            throw new \Exception("Chyba: Žádný z poskytovatelů nebyl rozpoznán pro soubor '$filename'.");
+        }
 
-        foreach ($this->parsers as $parser) {
-            if ($parser->canParse($content, $filename)) {
-                return [
-                    'parser' => $parser->getName(),
-                    'transactions' => $parser->parse($content)
-                ];
+        // 2. PARSING
+        $parserClass = $rule['parser_class'];
+        if (!class_exists($parserClass)) {
+            // Lazy load or manual requirement might be needed depending on autoloader
+            $this->loadParserFile($parserClass);
+        }
+
+        if (!class_exists($parserClass)) {
+            throw new \Exception("Parser class '$parserClass' nebyla nalezena.");
+        }
+
+        /** @var AbstractParser $parser */
+        $parser = new $parserClass();
+        $transactions = $parser->parse($content);
+
+        return [
+            'broker' => $rule['broker_name'],
+            'config' => $rule['config_name'],
+            'parser' => $parser->getName(),
+            'transactions' => $transactions
+        ];
+    }
+
+    /**
+     * Extracts text content from file (supports PDF via pdftotext)
+     */
+    private function extractContent(string $path, string $filename): string {
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        
+        if ($ext === 'pdf') {
+            // Use pdftotext (provided by poppler-utils in Docker)
+            $escapedPath = escapeshellarg($path);
+            $content = shell_exec("pdftotext -layout $escapedPath -");
+            if ($content === null) {
+                throw new \Exception("Chyba při extrakci textu z PDF. Je nainstalován poppler-utils?");
+            }
+            return $content;
+        }
+
+        return file_get_contents($path);
+    }
+
+    /**
+     * Looks up matching rule in the database
+     */
+    private function discoverRule(string $filename, string $content): ?array {
+        $stmt = $this->pdo->query("SELECT r.*, b.name as broker_name 
+                                   FROM broker_import_rules r 
+                                   JOIN brokers b ON r.broker_id = b.id");
+        $allRules = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        foreach ($allRules as $rule) {
+            $isMatch = false;
+
+            // Check filename pattern
+            if ($rule['file_pattern']) {
+                if (preg_match('/' . $rule['file_pattern'] . '/i', $filename)) {
+                    $isMatch = true;
+                }
+            }
+
+            // Check content patterns
+            if ($rule['content_patterns']) {
+                $patterns = json_decode($rule['content_patterns'], true);
+                $matches = 0;
+                foreach ($patterns as $p) {
+                    if (preg_match('/' . $p . '/i', $content)) {
+                        $matches++;
+                    }
+                }
+                
+                if ($matches >= $rule['min_matches']) {
+                    $isMatch = true;
+                } else {
+                    $isMatch = false; // min_matches is mandatory if patterns are defined
+                }
+            }
+
+            if ($isMatch) {
+                return $rule;
             }
         }
 
-        throw new \Exception("Chyba: Žádný z registrovaných parserů nerozpoznal formát souboru '$filename'.");
+        return null;
+    }
+
+    private function loadParserFile(string $className): void {
+        // Simple mapping Broker\V3\Import\Pdf\RevolutTradingPdfParser -> Import/Pdf/RevolutTradingPdfParser.php
+        $relPath = str_replace(['Broker\\V3\\Import\\', '\\'], ['', '/'], $className) . '.php';
+        $fullPath = __DIR__ . '/' . $relPath;
+        if (file_exists($fullPath)) {
+            require_once $fullPath;
+        }
     }
 }

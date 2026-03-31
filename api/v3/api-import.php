@@ -2,14 +2,11 @@
 namespace Broker\V3;
 
 use Broker\V3\Import\ImportManager;
-use Broker\V3\Import\Csv\FioCsvParser;
 
 require_once 'db.php';
 require_once 'Import/TransactionDTO.php';
 require_once 'Import/AbstractParser.php';
 require_once 'Import/ImportManager.php';
-require_once 'Import/Csv/AbstractCsvParser.php';
-require_once 'Import/Csv/FioCsvParser.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -29,13 +26,11 @@ if (!isset($_FILES['file'])) {
 
 try {
     $file = $_FILES['file'];
-    $manager = new ImportManager();
+    $db = DB::connect();
+    $manager = new ImportManager($db);
     
-    // ZAREGISTROVAT PARSERY (Tady budeme přidávat další potomky)
-    $manager->registerParser(new FioCsvParser());
-
-    // 1. ANALÝZA A PARSOVÁNÍ
-    $result = $manager->processFile($file['tmp_name']);
+    // 1. ANALÝZA A PARSOVÁNÍ (Automaticky podle DB pravidel)
+    $result = $manager->processFile($file['tmp_name'], $file['name']);
     $transactions = $result['transactions'];
 
     // 2. ULOŽENÍ DO POSTGRESU
