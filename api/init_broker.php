@@ -115,7 +115,7 @@ try {
         ['settings.title', 'Nastavení'], ['settings.language', 'Jazyk'], ['settings.currency', 'Základní měna'],
         ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'], ['common.close', 'Zavřít'],
         ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
-        ['admin.brokers', 'Služby (Brokeri)'], ['admin.currencies', 'Měny'], ['admin.assets', 'Tituly'],
+        ['admin.brokers', 'Poskytovatelé (Služby)'], ['admin.currencies', 'Měny (Kurzovník)'], ['admin.assets', 'Kategorie produktů'],
         ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['btn_import', 'Importovat'],
         ['filter_currency', 'Měna'], ['all', 'Vše'], ['locale', 'cs-CZ'],
         ['col_date', 'Datum'], ['col_currency', 'Měna'], ['col_quantity', 'Množství'],
