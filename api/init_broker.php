@@ -95,7 +95,30 @@ try {
             user_id INTEGER PRIMARY KEY,
             lang VARCHAR(5) DEFAULT 'cs',
             theme VARCHAR(20) DEFAULT 'dark',
+            base_currency VARCHAR(3) DEFAULT 'CZK',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        
+        'currencies' => "CREATE TABLE IF NOT EXISTS currencies (
+            code VARCHAR(3) PRIMARY KEY,
+            name VARCHAR(50),
+            symbol VARCHAR(5),
+            is_active BOOLEAN DEFAULT TRUE
+        )",
+
+        'brokers' => "CREATE TABLE IF NOT EXISTS brokers (
+            id $pk,
+            name VARCHAR(50) NOT NULL UNIQUE,
+            code VARCHAR(20),
+            parser_type VARCHAR(50),
+            icon VARCHAR(50),
+            is_active BOOLEAN DEFAULT TRUE
+        )",
+
+        'asset_classes' => "CREATE TABLE IF NOT EXISTS asset_classes (
+            id $pk,
+            name VARCHAR(50) NOT NULL UNIQUE,
+            code VARCHAR(20)
         )",
 
         'tickers_history' => "CREATE TABLE IF NOT EXISTS tickers_history (
@@ -117,6 +140,9 @@ try {
     // ale tady u testu je čistý reset jistota).
     $pdo->exec("DROP TABLE IF EXISTS user_settings");
     $pdo->exec("DROP TABLE IF EXISTS translations");
+    // $pdo->exec("DROP TABLE IF EXISTS currencies"); // Tyhle zatím mazat nebudeme, jen vytvoříme
+    // $pdo->exec("DROP TABLE IF EXISTS brokers");
+    // $pdo->exec("DROP TABLE IF EXISTS asset_classes");
 
     foreach ($tables as $name => $sql) {
         echo "Creating table '$name'... ";
@@ -174,6 +200,39 @@ try {
         $stmt->execute($label);
     }
     echo "Labels initialized.<br>";
+
+    // 5. Seed Currencies
+    $currencies = [
+        ['CZK', 'Česká koruna', 'Kč'],
+        ['EUR', 'Euro', '€'],
+        ['USD', 'Americký dolar', '$'],
+        ['GBP', 'Britská libra', '£']
+    ];
+    $stmt = $pdo->prepare("INSERT INTO currencies (code, name, symbol) VALUES (?, ?, ?) ON CONFLICT (code) DO NOTHING");
+    foreach ($currencies as $c) $stmt->execute($c);
+    echo "Currencies seeded.<br>";
+
+    // 6. Seed Brokers
+    $brokers = [
+        ['Fio banka', 'fio', 'FioCsvParser', 'bank'],
+        ['Revolut', 'revolut', 'RevolutCsvParser', 'credit-card'],
+        ['Coinbase', 'coinbase', 'CoinbaseParser', 'bitcoin'],
+        ['eToro', 'etoro', 'EtoroParser', 'trending-up']
+    ];
+    $stmt = $pdo->prepare("INSERT INTO brokers (name, code, parser_type, icon) VALUES (?, ?, ?, ?) ON CONFLICT (name) DO NOTHING");
+    foreach ($brokers as $b) $stmt->execute($b);
+    echo "Brokers seeded.<br>";
+
+    // 7. Seed Asset Classes
+    $assets = [
+        ['Akcie', 'stocks'],
+        ['Komodity', 'commodities'],
+        ['Kryptoměny', 'crypto'],
+        ['Valuty', 'forex']
+    ];
+    $stmt = $pdo->prepare("INSERT INTO asset_classes (name, code) VALUES (?, ?) ON CONFLICT (name) DO NOTHING");
+    foreach ($assets as $a) $stmt->execute($a);
+    echo "Asset classes seeded.<br>";
 
     echo "<h3>Database initialization complete!</h3>";
     echo "<p>You can now log in with: <b>admin / admin123</b></p>";
