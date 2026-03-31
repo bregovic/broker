@@ -1,31 +1,38 @@
 <?php
 /**
- * init_broker.php - THE NUCLEAR RESET
- * Only run when you want to wipe EVERYTHING (Postgres / MySQL)
+ * init_broker.php - AGGRESSIVE RESET
  */
-
 header('Content-Type: text/plain; charset=utf-8');
 require_once __DIR__ . '/config.php';
 
 try {
     $pdo = get_pdo();
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     echo "CONNECTED TO: $driver\n\n";
 
-    // --- NUCLEAR STEP FOR POSTGRES ---
-    if ($driver === 'pgsql') {
-        echo "Postgres detected. Dropping Entire Public Schema...\n";
-        $pdo->exec("DROP SCHEMA public CASCADE");
-        $pdo->exec("CREATE SCHEMA public");
-        $pdo->exec("GRANT ALL ON SCHEMA public TO postgres");
-        $pdo->exec("GRANT ALL ON SCHEMA public TO public");
-        echo "Public schema RECREATED.\n";
+    // Seznam všech tabulek, které chceme totálně zlikvidovat
+    $tablesToDrop = [
+        'users', 'user_settings', 'transactions', 'dividends', 'live_quotes', 
+        'rates', 'translations', 'watch', 'ticker_mapping', 'tickers_history', 
+        'currencies', 'brokers', 'system_config'
+    ];
+
+    echo "--- CLEANING PHASE ---\n";
+    foreach ($tablesToDrop as $tbl) {
+        try {
+            $pdo->exec("DROP TABLE IF EXISTS $tbl CASCADE");
+            echo "DROPPED: $tbl (if existed)\n";
+        } catch (Exception $e) {
+            echo "FAILED TO DROP $tbl: " . $e->getMessage() . "\n";
+        }
     }
 
+    echo "\n--- CREATION PHASE ---\n";
     $isMysql = ($driver === 'mysql');
     $pk = $isMysql ? "INT AUTO_INCREMENT PRIMARY KEY" : "SERIAL PRIMARY KEY";
 
-    $tables = [
+    $schema = [
         'users' => "CREATE TABLE users (
             id $pk,
             username VARCHAR(50) NOT NULL UNIQUE,
@@ -116,34 +123,27 @@ try {
         )"
     ];
 
-    foreach ($tables as $name => $sql) {
+    foreach ($schema as $name => $sql) {
         $pdo->exec($sql);
         echo "CREATED: $name\n";
     }
 
     // --- SEEDING ---
+    echo "\n--- SEEDING PHASE ---\n";
     $pdo->exec("INSERT INTO users (username, password, role) VALUES ('admin', '" . password_hash('admin123', PASSWORD_DEFAULT) . "', 'admin') ON CONFLICT DO NOTHING");
-    
-    // Seed system config
-    $config = [
-        ['google_finance_url', 'https://finance.google.com/finance/quote/', 'URL prefix for Google Finance'],
-        ['yahoo_finance_api_key', 'YOUR_YAHOO_API_KEY', 'API Key for Yahoo Finance'],
-        ['yahoo_finance_region', 'US', 'Default region for Yahoo Finance']
-    ];
-    $cfgStmt = $pdo->prepare("INSERT INTO system_config (config_key, config_value, description) VALUES (?, ?, ?) ON CONFLICT DO NOTHING");
-    foreach ($config as $c) $cfgStmt->execute($c);
-    
+    echo "USER: admin created\n";
+
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
-        ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
-        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'],
-        ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'],
-        ['filter_watched_off', 'Sledované: Vše'], ['filter_watched_on', 'Sledované: Pouze']
+        ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...']
     ];
     $stmt = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) ON CONFLICT DO NOTHING");
-    foreach ($labels as $l) $stmt->execute($l);
+    foreach ($labels as $l) {
+        $stmt->execute($l);
+    }
+    echo "TRANSLATIONS: seeded\n";
 
-    echo "\n--- RESET SUCCESSFUL ---";
+    echo "\nALL DONE! APP IS READY.";
 
 } catch (Exception $e) {
     echo "\nFATAL ERROR: " . $e->getMessage();

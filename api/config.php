@@ -31,6 +31,18 @@ if (getenv('DATABASE_URL')) {
 /**
  * PDO Connection Helper
  */
+function get_system_config($key, $default = null) {
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare("SELECT config_value FROM system_config WHERE config_key = ?");
+        $stmt->execute([$key]);
+        $val = $stmt->fetchColumn();
+        return ($val !== false) ? $val : $default;
+    } catch (Exception $e) {
+        return $default;
+    }
+}
+
 function get_pdo() {
     $type = defined('DB_TYPE_URL') ? DB_TYPE_URL : 'mysql';
     $host = defined('DB_HOST_URL') ? DB_HOST_URL : DB_HOST;

@@ -77,7 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lastError = '';
             foreach ($exchanges as $ex) {
                 $symbol = $ex ? $ticker . ':' . $ex : $ticker;
-                $url = 'https://www.google.com/finance/quote/' . urlencode($symbol);
+                $baseUrl = get_system_config('google_finance_url', 'https://www.google.com/finance/quote/');
+                $url = $baseUrl . urlencode($symbol);
                 
                 $opts = [
                     'http' => [

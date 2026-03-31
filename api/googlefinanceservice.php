@@ -636,7 +636,8 @@ class GoogleFinanceService
         ];
 
         foreach ($candidates as $code) {
-            $url = 'https://www.google.com/finance/quote/' . urlencode($code) . '?hl=en';
+            $baseUrl = get_system_config('google_finance_url', 'https://www.google.com/finance/quote/');
+            $url = $baseUrl . urlencode($code) . '?hl=en';
 
             $html = $this->fetchUrl($url);
             if ($html === false || $html === '') {
