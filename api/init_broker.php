@@ -108,6 +108,11 @@ try {
         )",
         'brokers' => "CREATE TABLE brokers (
             id $pk, name VARCHAR(50) UNIQUE, code VARCHAR(20), parser_type VARCHAR(50), icon VARCHAR(50)
+        )",
+        'system_config' => "CREATE TABLE system_config (
+            config_key VARCHAR(50) PRIMARY KEY,
+            config_value TEXT,
+            description TEXT
         )"
     ];
 
@@ -117,7 +122,16 @@ try {
     }
 
     // --- SEEDING ---
-    $pdo->exec("INSERT INTO users (username, password, role) VALUES ('admin', '" . password_hash('admin123', PASSWORD_DEFAULT) . "', 'admin')");
+    $pdo->exec("INSERT INTO users (username, password, role) VALUES ('admin', '" . password_hash('admin123', PASSWORD_DEFAULT) . "', 'admin') ON CONFLICT DO NOTHING");
+    
+    // Seed system config
+    $config = [
+        ['google_finance_url', 'https://finance.google.com/finance/quote/', 'URL prefix for Google Finance'],
+        ['yahoo_finance_api_key', 'YOUR_YAHOO_API_KEY', 'API Key for Yahoo Finance'],
+        ['yahoo_finance_region', 'US', 'Default region for Yahoo Finance']
+    ];
+    $cfgStmt = $pdo->prepare("INSERT INTO system_config (config_key, config_value, description) VALUES (?, ?, ?) ON CONFLICT DO NOTHING");
+    foreach ($config as $c) $cfgStmt->execute($c);
     
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
