@@ -1,6 +1,6 @@
 <?php
 /**
- * DB INITIALIZER (Safe Version - No data loss for core tables)
+ * DB INITIALIZER (Modernized V3 Version)
  */
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
@@ -11,179 +11,61 @@ try {
     $pdo = get_pdo();
     echo "CONNECTED TO: " . $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) . "\n\n";
 
-    // 1. NON-DESTRUCTIVE SCHEMA (Core Tables)
-    $core_schema = [
-        'users' => "CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            email VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-        'user_settings' => "CREATE TABLE IF NOT EXISTS user_settings (
-            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-            base_currency VARCHAR(10) DEFAULT 'CZK',
-            language VARCHAR(10) DEFAULT 'cs',
-            theme VARCHAR(20) DEFAULT 'light',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-        'transactions' => "CREATE TABLE IF NOT EXISTS transactions (
-            trans_id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id),
-            date DATE NOT NULL,
-            ticker VARCHAR(20),
-            trans_type VARCHAR(20),
-            amount DECIMAL(18, 8),
-            price DECIMAL(18, 8),
-            currency VARCHAR(10),
-            ex_rate DECIMAL(18, 8),
-            fees DECIMAL(18, 8),
-            amount_czk DECIMAL(18, 8),
-            platform VARCHAR(50),
-            product_type VARCHAR(20)
-        )",
-        'dividends' => "CREATE TABLE IF NOT EXISTS dividends (
-            div_id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id),
-            date DATE NOT NULL,
-            ticker VARCHAR(20),
-            amount DECIMAL(18, 8),
-            tax DECIMAL(18, 8),
-            currency VARCHAR(10),
-            ex_rate DECIMAL(18, 8),
-            amount_czk DECIMAL(18, 8),
-            platform VARCHAR(50)
-        )"
-    ];
+    // 1. MODERN TRANSACTIONS SCHEMA (Ensuring both old and new columns for compatibility)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (
+        trans_id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        ticker VARCHAR(20),
+        transaction_date DATE,
+        type VARCHAR(20),
+        quantity DECIMAL(18, 8),
+        price_per_unit DECIMAL(18, 8),
+        currency VARCHAR(10),
+        fee DECIMAL(18, 8),
+        total_amount DECIMAL(18, 8),
+        source_broker VARCHAR(50),
+        broker_trade_id VARCHAR(100) UNIQUE,
+        metadata JSONB,
+        -- Keep legacy columns for compatibility
+        date DATE,
+        amount DECIMAL(18, 8),
+        price DECIMAL(18, 8),
+        platform VARCHAR(50)
+    )");
+    echo "VERIFIED: transactions (v3 structure)\n";
 
-    foreach ($core_schema as $name => $sql) {
-        $pdo->exec($sql);
-        echo "VERIFIED: $name\n";
-    }
+    // 2. IMPORT RULES SCHEMA
+    $pdo->exec("CREATE TABLE IF NOT EXISTS broker_import_rules (
+        id SERIAL PRIMARY KEY,
+        config_name VARCHAR(100) UNIQUE NOT NULL,
+        broker_name VARCHAR(100),
+        parser_class VARCHAR(255) NOT NULL,
+        file_pattern TEXT,
+        content_regex TEXT
+    )");
+    echo "VERIFIED: broker_import_rules\n";
 
-    // 2. REFRESHABLE SCHEMA (Lookups and caches - Safe to drop/recreate if needed, but using IF NOT EXISTS)
-    $lookup_schema = [
-        'live_quotes' => "CREATE TABLE IF NOT EXISTS live_quotes (
-            ticker VARCHAR(20) PRIMARY KEY,
-            price DECIMAL(18, 8) NOT NULL,
-            currency VARCHAR(10) NOT NULL,
-            last_fetched TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            change_percent DECIMAL(10, 4),
-            high_52w DECIMAL(18, 8), low_52w DECIMAL(18, 8), 
-            all_time_high DECIMAL(18, 8), all_time_low DECIMAL(18, 8)
-        )",
-        'rates' => "CREATE TABLE IF NOT EXISTS rates (
-            currency VARCHAR(10) NOT NULL,
-            rate DECIMAL(18, 8) NOT NULL,
-            date DATE NOT NULL,
-            amount INTEGER DEFAULT 1,
-            PRIMARY KEY (currency, date)
-        )",
-        'translations' => "CREATE TABLE IF NOT EXISTS translations (
-            label_key VARCHAR(100) NOT NULL,
-            lang VARCHAR(10) NOT NULL,
-            translation TEXT,
-            PRIMARY KEY (label_key, lang)
-        )",
-        'brokers' => "CREATE TABLE IF NOT EXISTS brokers (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) UNIQUE NOT NULL,
-            parser_type VARCHAR(50) DEFAULT 'generic'
-        )",
-        'asset_types' => "CREATE TABLE IF NOT EXISTS asset_types (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) UNIQUE NOT NULL
-        )",
-        'system_config' => "CREATE TABLE IF NOT EXISTS system_config (
-            config_key VARCHAR(100) PRIMARY KEY,
-            config_value TEXT,
-            description TEXT
-        )",
-        'broker_import_rules' => "CREATE TABLE IF NOT EXISTS broker_import_rules (
-            id SERIAL PRIMARY KEY,
-            broker_id INTEGER REFERENCES brokers(id) ON DELETE CASCADE,
-            config_name VARCHAR(100) NOT NULL,
-            parser_class VARCHAR(255) NOT NULL,
-            file_pattern TEXT,
-            content_patterns JSONB,
-            min_matches INTEGER DEFAULT 1
-        )"
-    ];
-
-    foreach ($lookup_schema as $name => $sql) {
-        $pdo->exec($sql);
-        echo "VERIFIED: $name\n";
-    }
-
-    // 3. SEEDING (Extensive Translations)
-    // Migrace starých názvů sloupců na nové 'id'
-    try {
-        $pdo->exec("ALTER TABLE brokers RENAME COLUMN broker_id TO id");
-    } catch(Exception $e) {}
-    try {
-        $pdo->exec("ALTER TABLE asset_types RENAME COLUMN type_id TO id");
-    } catch(Exception $e) {}
-
-    // Vyčištění duplicit v asset_types, pokud existují (ponecháme jen unikátní jména s nejnižším ID)
-    $pdo->exec("DELETE FROM asset_types a USING asset_types b WHERE a.id > b.id AND a.name = b.name");
-    $pdo->exec("DELETE FROM brokers a USING brokers b WHERE a.id > b.id AND a.name = b.name");
-
-    $labels = [
-        ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
-        ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
-        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'], ['loading_rates', 'Načítám kurzy...'],
-        ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'], ['btn_importing', 'Importuji...'],
-        ['settings.title', 'Nastavení'], ['settings.language', 'Jazyk'], ['settings.currency', 'Základní měna'],
-        ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'], ['common.close', 'Zavřít'],
-        ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
-        ['admin.brokers', 'Poskytovatelé služeb (Broker)'], ['admin.currencies', 'Seznam měn (Měnové kurzy)'], 
-        ['admin.asset_types', 'Typy produktů a aktiv'],
-        ['admin.import_rules', 'Automatické rozpoznávání importů'],
-        ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['btn_import', 'Importovat'],
-        ['filter_currency', 'Měna'], ['all', 'Vše'], ['locale', 'cs-CZ'],
-        ['col_date', 'Datum'], ['col_currency', 'Měna'], ['col_quantity', 'Množství'],
-        ['col_rate_czk', 'Kurz CZK'], ['col_unit', 'Za jednotku'], ['col_source', 'Zdroj'],
-        ['add_rate_title', 'Přidat ruční kurz'], ['import_cnb_title', 'Import kurzů ČNB'],
-        ['select_year', 'Vyberte rok'], ['import_cnb_desc', 'Tato akce stáhne kompletní kurzovní lístek ČNB pro vybraný rok.'],
-        ['import.drop_title', 'Přetáhněte soubory sem'], ['import.supported', 'Podporované formáty: CSV, XLSX, PDF (vybrané)'],
-        ['import.add_btn', 'Přidat soubor'], ['import.working', 'Zpracovávám...'],
-        ['import.unsupported.title', 'Nepodporovaný formát'], ['import.unsupported.desc', 'Tento formát zatím neumíme automaticky parsovat.']
-    ];
-    $stmtT = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) 
-                            ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation");
-    foreach ($labels as $l) $stmtT->execute($l);
-
-    $pdo->exec("INSERT INTO brokers (name, parser_type) VALUES 
-        ('Revolut', 'revolut'), ('Fio banka', 'fio'), ('Coinbase', 'coinbase'), 
-        ('eToro', 'etoro'), ('Trading212', 't212'), ('Degiro', 'degiro'), ('IBKR', 'ibkr') ON CONFLICT DO NOTHING");
-    
-    // Seed import rules based on JS recognizers
+    // 3. SEEDING RULES
     $rules = [
-        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'revolut.*trading|account-statement.*cs-cz', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser'],
-        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser'],
-        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'revolut.*commodity|account-statement.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)|Exchanged to.*(XAU|XAG|XPT|XPD)|Drahé kovy|Komodity', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser'],
-        ['fio_pdf', 'Fio Banka (PDF)', 'fio', 'Fio banka|Výpis operací|Výpis z účtu', 'Broker\\V3\\Import\\Pdf\\FioPdfParser'],
-        ['fio_csv', 'Fio Banka (CSV)', 'fio', 'ID pokynu|Datum|Směr|Měna|Množství|Cena', 'Broker\\V3\\Import\\Csv\\FioCsvParser'],
-        ['ibkr_pdf', 'Interactive Brokers (PDF)', 'ibkr|u\\d+', 'Time Period:.*to|Date.*Account.*Description.*Transaction Type.*Symbol.*Commission.*Net Amount', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser'],
-        ['etoro_xlsx', 'eToro (XLSX)', 'etoro', 'eToro.*(Group|Europe|UK)|Closed Positions|Transactions Report|Position ID', 'Broker\\V3\\Import\\Xlsx\\EtoroXlsxParser'],
-        ['trading212_csv', 'Trading 212 (CSV)', 'trading212|212', 'Action,Time,ISIN,Ticker,Name,Notes,ID,No. of shares,Price / share|Transaction ID,Financial Instrument', 'Broker\\V3\\Import\\Csv\\Trading212CsvParser'],
-        ['coinbase_csv', 'Coinbase (CSV)', 'coinbase', 'Coinbase.*(Global|Europe)|Transaction History', 'Broker\\V3\\Import\\Csv\\CoinbaseCsvParser']
+        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|account-statement.*cs-cz', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
+        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny'],
+        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser', 'revolut.*commodity|account-statement.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)|Exchanged to.*(XAU|XAG|XPT|XPD)|Drahé kovy|Komodity']
     ];
 
-    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, file_pattern, content_regex, parser_class) VALUES (?, ?, ?, ?, ?) ON CONFLICT (config_name) DO UPDATE SET broker_name=EXCLUDED.broker_name, file_pattern=EXCLUDED.file_pattern, content_regex=EXCLUDED.content_regex, parser_class=EXCLUDED.parser_class");
+    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, parser_class, file_pattern, content_regex) 
+                           VALUES (?, ?, ?, ?, ?) 
+                           ON CONFLICT (config_name) DO UPDATE SET 
+                           broker_name=EXCLUDED.broker_name, 
+                           parser_class=EXCLUDED.parser_class, 
+                           file_pattern=EXCLUDED.file_pattern, 
+                           content_regex=EXCLUDED.content_regex");
+    
     foreach ($rules as $rule) {
         $stmt->execute($rule);
+        echo "SEEDED RULE: {$rule[1]}\n";
     }
 
-    $pdo->exec("INSERT INTO asset_types (name) VALUES 
-        ('Akcie'), ('ETF'), ('Kryptoměny'), ('Komodity'), ('Valuty'), ('Ostatní') ON CONFLICT DO NOTHING");
-
-    $pdo->exec("INSERT INTO system_config (config_key, config_value, description) VALUES 
-        ('google_finance_url', 'https://www.google.com/finance/quote/', 'Base URL for Google Finance scraping'),
-        ('base_currency', 'CZK', 'Default portfolio currency')
-        ON CONFLICT (config_key) DO NOTHING");
-
-    echo "\nALL DONE! APP IS READY AND SAFE.";
+    echo "\nDATABASE IS MODERNIZED AND READY!";
 
 } catch (Throwable $e) {
     http_response_code(500);

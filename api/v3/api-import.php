@@ -77,7 +77,7 @@ try {
         'message' => "Import přes {$result['parser']} proběhl úspěšně. Uloženo $inserted nových transakcí."
     ]);
 
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
     if (isset($db)) $db->rollBack();
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'CHYBA IMPORTU: ' . $e->getMessage()]);
 }
