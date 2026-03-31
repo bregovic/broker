@@ -140,7 +140,15 @@ try {
 
     $labels = [
         ['nav_market', 'Trh'], ['nav_portfolio', 'Portfolio'], ['nav_dividends', 'Dividendy'], ['nav_pnl', 'Zisk/Ztráta'],
-        ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...']
+        ['nav_balances', 'Zůstatky'], ['nav_rates', 'Kurzy'], ['nav_import', 'Import'], ['loading_data', 'Načítám data...'],
+        ['loading_pnl', 'Načítám zisky/ztráty...'], ['loading_dividends', 'Načítám dividendy...'],
+        ['btn_new', 'Nový'], ['btn_refresh', 'Obnovit'], ['btn_update_prices', 'Aktualizovat ceny'],
+        ['filter_watched_off', 'Sledované: Vše'], ['filter_watched_on', 'Sledované: Pouze'],
+        ['settings.title', 'Nastavení'], ['settings.language', 'Jazyk'], ['settings.currency', 'Základní měna'],
+        ['settings.admin', 'Administrace'], ['common.save', 'Uložit'], ['common.cancel', 'Zrušit'],
+        ['common.admin_pass', 'Heslo administrátora'], ['admin.config', 'Konfigurace systému'],
+        ['admin.brokers', 'Služby (Brokeri)'], ['admin.currencies', 'Měny'], ['admin.assets', 'Tituly'],
+        ['btn_add_rate', 'Přidat kurz'], ['btn_import_cnb', 'Import ČNB'], ['filter_currency', 'Měna'], ['loading_rates', 'Načítám kurzy...']
     ];
     $stmt = $pdo->prepare("INSERT INTO translations (label_key, lang, translation) VALUES (?, 'cs', ?) ON CONFLICT DO NOTHING");
     foreach ($labels as $l) {
@@ -148,8 +156,23 @@ try {
     }
     echo "TRANSLATIONS: seeded\n";
 
-    echo "\nALL DONE! APP IS READY.";
+    // Seed Lookups
+    $pdo->exec("INSERT INTO brokers (name, parser_type) VALUES 
+        ('Revolut', 'revolut'), ('Fio banka', 'fio'), ('Coinbase', 'coinbase'), 
+        ('eToro', 'etoro'), ('Trading212', 't212'), ('Degiro', 'degiro') 
+        ON CONFLICT DO NOTHING");
+    
+    $pdo->exec("INSERT INTO asset_types (name) VALUES 
+        ('Akcie'), ('ETF'), ('Kryptoměny'), ('Komodity'), ('Valuty'), ('Ostatní') 
+        ON CONFLICT DO NOTHING");
 
-} catch (Exception $e) {
+    $pdo->exec("INSERT INTO system_config (config_key, config_value, description) VALUES 
+        ('google_finance_url', 'https://www.google.com/finance/quote/', 'Base URL for Google Finance scraping'),
+        ('yahoo_api_key', '', 'API Key for Yahoo Finance (if needed)'),
+        ('base_currency', 'CZK', 'Default portfolio currency')
+        ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value");
+
+    echo "DONE! APP IS READY. <a href='/'>Go to App</a>";
+} catch (Throwable $e) {
     echo "\nFATAL ERROR: " . $e->getMessage();
 }
