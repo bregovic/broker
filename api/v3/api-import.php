@@ -116,7 +116,9 @@ try {
             'data' => $results, 
             'debug' => [
                 'files_count' => count($filesArr),
-                'raw_files_keys' => array_keys($_FILES),
+                'php_post_max' => ini_get('post_max_size'),
+                'php_upload_max' => ini_get('upload_max_filesize'),
+                'php_memory_limit' => ini_get('memory_limit'),
                 'raw_files_struct' => array_map(function($f) { 
                     return [
                         'name' => is_array($f['name']) ? 'ARRAY(' . count($f['name']) . ')' : $f['name'],

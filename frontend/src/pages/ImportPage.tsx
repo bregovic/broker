@@ -251,15 +251,6 @@ const ImportPage = () => {
                                                 </TableCell>
                                             </TableRow>
                                         )}
-                                        {diagnostics.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={5}>
-                                                    <div style={{ padding: '40px', textAlign: 'center' }}>
-                                                        <Text size={400} italic>Nebyla nalezena žádná data o souborech. Zkuste nahrát soubory znovu nebo zkontrolujte formát.</Text>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
                                         {diagnostics.map((d, i) => (
                                             <TableRow key={i}>
                                                 <TableCell className={styles.tableCell}>
