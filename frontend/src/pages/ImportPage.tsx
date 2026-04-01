@@ -1,7 +1,6 @@
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-
 import {
     makeStyles,
     tokens,
@@ -10,17 +9,27 @@ import {
     ProgressBar,
     Card,
     Badge,
-    Avatar,
-    Toolbar
+    Toolbar,
+    Table,
+    TableHeader,
+    TableRow,
+    TableHeaderCell,
+    TableBody,
+    TableCell,
+    Dropdown,
+    Option,
+    ToolbarButton,
+    ToolbarDivider
 } from '@fluentui/react-components';
 import {
-    ArrowUpload24Regular,
     DocumentAdd24Regular,
     Dismiss24Regular,
     DocumentPdfRegular,
-    DocumentRegular
+    DocumentRegular,
+    CheckmarkCircle24Regular,
+    ArrowSync24Regular,
+    Play24Regular
 } from '@fluentui/react-icons';
-import { processImport } from '../utils/ImportProcessor';
 import { useTranslation } from '../context/TranslationContext';
 import { PageLayout, PageContent, PageHeader } from '../components/PageLayout';
 
@@ -29,7 +38,7 @@ const useStyles = makeStyles({
         display: 'flex',
         flexDirection: 'column',
         gap: '24px',
-        maxWidth: '800px',
+        maxWidth: '1000px',
         margin: '0 auto',
         animationDuration: '0.3s',
         animationName: {
@@ -40,7 +49,7 @@ const useStyles = makeStyles({
     dropZone: {
         border: `2px dashed ${tokens.colorNeutralStroke1}`,
         borderRadius: '12px',
-        padding: '60px',
+        padding: '80px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -60,276 +69,262 @@ const useStyles = makeStyles({
         backgroundColor: tokens.colorBrandBackground2,
         transform: 'scale(1.02)'
     },
-    fileCard: {
+    card: {
         padding: '24px',
         display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: '16px',
-        position: 'relative'
+        flexDirection: 'column',
+        gap: '16px'
     },
-    logBox: {
-        backgroundColor: tokens.colorNeutralBackgroundStatic,
-        color: tokens.colorNeutralForegroundStaticInverted,
-        padding: '16px',
-        borderRadius: '8px',
-        fontFamily: 'Consolas, monospace',
-        minHeight: '100px',
-        maxHeight: '150px',
-        whiteSpace: 'pre-wrap',
-        overflow: 'auto',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        marginTop: '40px'
+    tableCell: {
+        fontSize: '13px'
     }
 });
+
+interface DiagnosticItem {
+    filename: string;
+    extension: string;
+    broker: string;
+    parser: string;
+    parser_class: string | null;
+    tx_count: number;
+    rule_id: number | null;
+    asset_type: string;
+    temp_file: string;
+    success?: boolean;
+}
+
+interface Rule {
+    id: number;
+    config_name: string;
+    broker_name: string;
+}
 
 const ImportPage = () => {
     const styles = useStyles();
     const { t } = useTranslation();
+    
+    const [step, setStep] = useState(1); // 1: Upload, 2: Diagnostic, 3: Results
     const [dragging, setDragging] = useState(false);
-    const [files, setFiles] = useState<{ file: File, broker: string }[]>([]);
-    const [uploading, setUploading] = useState(false);
-    const [logs, setLogs] = useState<string[]>([]);
-    const logContainerRef = useRef<HTMLDivElement>(null);
+    const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+    const [rules, setRules] = useState<Rule[]>([]);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [results, setResults] = useState<any[]>([]);
 
     useEffect(() => {
-        if (logContainerRef.current) {
-            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-        }
-    }, [logs]);
-
-    const detectBroker = async (file: File): Promise<string> => {
-        // 1. Check filename
-        const name = file.name.toLowerCase();
-        if (name.includes('revolut')) return 'Revolut';
-        if (name.includes('fio') || name.includes('fio_')) return 'Fio banka';
-        if (name.includes('trading212') || name.includes('trading 212')) return 'Trading 212';
-        if (name.includes('coinbase')) return 'Coinbase';
-        if (name.includes('ibkr') || (name.includes('activity') && name.includes('statement'))) return 'IBKR';
-        if (name.endsWith('.xlsx')) return 'eToro (Excel)';
-
-        // 2. Check content (fallback for CSVs mostly)
-        try {
-            const text = await file.slice(0, 4096).text();
-            if (text.includes('Fio banka') || text.includes('Id transakce')) return 'Fio banka';
-            if (text.includes('Trading 212') || text.includes('Action,Time,ISIN')) return 'Trading 212';
-            if (text.includes('Revolut') || text.includes('Type,Product,Started Date')) return 'Revolut';
-            if (text.includes('Coinbase') || text.includes('Transaction History')) return 'Coinbase';
-            if (text.includes('Interactive Brokers')) return 'IBKR';
-        } catch (e) {
-            console.error("Content check failed", e);
-        }
-
-        return 'Neznámý broker';
-    };
-
-    const handleDrop = useCallback(async (e: React.DragEvent) => {
-        e.preventDefault();
-        setDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            processFiles(e.dataTransfer.files);
-        }
+        axios.get('/api/v3/api-import.php?action=list_rules')
+            .then(res => { if(res.data.success) setRules(res.data.rules); })
+            .catch(err => console.error("Failed to load rules", err));
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            processFiles(e.target.files);
+            handleAnalyze(e.target.files);
         }
     };
 
-    const processFiles = async (fileList: FileList) => {
-        const newFiles = Array.from(fileList);
-        for (const f of newFiles) {
-            setLogs(p => [...p, `Analyzuji soubor: ${f.name}...`]);
-            const detected = await detectBroker(f);
-            setFiles(prev => [...prev, { file: f, broker: detected }]);
-            const symbol = (detected === 'Neznámý broker') ? '❌' : '✅';
-            setLogs(p => [...p, `${symbol} Detekován (${f.name}): ${detected}`]);
-        }
-    };
-
-    const handleRemoveFile = (index: number) => {
-        setFiles(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const handleUploadV3 = async () => {
-        if (files.length === 0) return;
-        setUploading(true);
-        setLogs(p => [...p, '>>> ZAHAJUJI V3 IMPORT (PostgreSQL) <<<']);
+    const handleAnalyze = async (fileList: FileList) => {
+        setAnalyzing(true);
+        setStep(2);
+        
+        const formData = new FormData();
+        Array.from(fileList).forEach(f => formData.append('files[]', f));
 
         try {
-            const currentFiles = [...files];
-            for (const item of currentFiles) {
-                const { file } = item;
-                setLogs(p => [...p, `--- Posílám surový soubor do V3: ${file.name} ---`]);
-                
-                const formData = new FormData();
-                formData.append('file', file);
-
-                try {
-                    // Voláme nový V3 endpoint pod /api/ prefixem
-                    const res = await axios.post('/api/v3/api-import.php', formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-
-
-                    if (res.data.success) {
-                        setLogs(p => [...p, `✅ V3 Úspěch: ${res.data.message}`]);
-                        setFiles(prev => prev.filter(f => f.file !== file));
-                    } else {
-                        throw new Error(res.data.message || 'Server error');
-                    }
-                } catch (err: any) {
-                    setLogs(p => [...p, `❌ V3 CHYBA (${file.name}): ${err.message}`]);
-                }
+            const res = await axios.post('/api/v3/api-import.php?action=analyze', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            if (res.data.success) {
+                setDiagnostics(res.data.data);
             }
         } catch (e: any) {
-            setLogs(p => [...p, `❌ CRITICAL ERROR: ${e.message}`]);
+            alert('Chyba při analýze: ' + e.message);
+            setStep(1);
         } finally {
-            setUploading(false);
+            setAnalyzing(false);
         }
     };
 
-    const handleUpload = async () => {
-        if (files.length === 0) return;
-        setUploading(true);
-        setLogs(p => [...p, '>>> ZAHAJUJI LEGACY IMPORT (Wedos) <<<']);
+    const handleRuleChange = (temp_file: string, ruleId: number) => {
+        const rule = rules.find(r => r.id === ruleId);
+        setDiagnostics(prev => prev.map(d => 
+            d.temp_file === temp_file 
+                ? { ...d, rule_id: ruleId, broker: rule?.broker_name || 'Manual' } 
+                : d
+        ));
+    };
 
+    const handleExecuteImport = async () => {
+        setImporting(true);
         try {
-            const currentFiles = [...files];
-            for (const item of currentFiles) {
-                const { file } = item;
-                setLogs(p => [...p, `--- Importuji (JS): ${file.name} ---`]);
-                try {
-                    await processImport(file, (msg: string) => setLogs(p => [...p, msg]));
-                    setLogs(p => [...p, `✅ Hotovo: ${file.name}`]);
-                    setFiles(prev => prev.filter(f => f.file !== file));
-                } catch (err: any) {
-                    setLogs(p => [...p, `❌ CHYBA (${file.name}): ${err.message}`]);
-                }
+            const items = diagnostics.map(d => ({
+                temp_file: d.temp_file,
+                rule_id: d.rule_id,
+                filename: d.filename
+            }));
+            
+            const res = await axios.post('/api/v3/api-import.php?action=import', { items });
+            if (res.data.success) {
+                setResults(res.data.summary);
+                setStep(3);
+            } else {
+                alert('Chyba importu: ' + res.data.message);
             }
         } catch (e: any) {
-            setLogs(p => [...p, `❌ CRITICAL ERROR: ${e.message}`]);
+            alert('Chyba: ' + e.message);
         } finally {
-            setUploading(false);
+            setImporting(false);
         }
     };
 
-
-
-    const getFileIcon = (fileName: string) => {
-        if (fileName.endsWith('.pdf')) return <DocumentPdfRegular style={{ fontSize: '32px', color: '#d13438' }} />;
-        if (fileName.endsWith('.csv')) return <DocumentRegular style={{ fontSize: '32px', color: '#107c10' }} />;
-        return <DocumentRegular style={{ fontSize: '32px' }} />;
+    const reset = () => {
+        setStep(1);
+        setDiagnostics([]);
+        setResults([]);
     };
 
-    return (
-        <PageLayout>
-            <PageHeader>
-                <Toolbar />
-            </PageHeader>
-            <PageContent>
-                <div className={styles.container}>
-                    <div>
+    const getFileIcon = (ext: string) => {
+        if (ext === 'pdf') return <DocumentPdfRegular style={{ fontSize: '24px', color: '#d13438' }} />;
+        if (ext === 'csv') return <DocumentRegular style={{ fontSize: '24px', color: '#107c10' }} />;
+        return <DocumentRegular style={{ fontSize: '24px' }} />;
+    };
 
-
-
-                    </div>
-
-                    {files.length === 0 && (
+    if (step === 1) {
+        return (
+            <PageLayout>
+                <PageHeader><Toolbar /></PageHeader>
+                <PageContent>
+                    <div className={styles.container}>
                         <div
                             className={`${styles.dropZone} ${dragging ? styles.dropZoneActive : ''}`}
                             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                             onDragLeave={() => setDragging(false)}
-                            onDrop={handleDrop}
+                            onDrop={(e) => { e.preventDefault(); setDragging(false); handleAnalyze(e.dataTransfer.files); }}
                             onClick={() => document.getElementById('fileInput')?.click()}
                         >
-                            <input
-                                type="file"
-                                id="fileInput"
-                                style={{ display: 'none' }}
-                                onChange={handleFileSelect}
-                                multiple
-                            />
-
+                            <input type="file" id="fileInput" style={{ display: 'none' }} onChange={handleFileSelect} multiple />
                             <DocumentAdd24Regular style={{ fontSize: '64px', color: tokens.colorBrandForeground1 }} />
                             <div style={{ textAlign: 'center' }}>
-                                <Text size={500} weight="semibold" block>{t('import.drop_title')}</Text>
-                                <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>{t('import.supported')}</Text>
+                                <Text size={600} weight="semibold" block>{t('import_title') || 'Nahrajte výpisy pro V3 Import'}</Text>
+                                <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>Podporujeme Revolut (Stock, Crypto, Commodity), brzy další.</Text>
                             </div>
                         </div>
-                    )}
+                    </div>
+                </PageContent>
+            </PageLayout>
+        );
+    }
 
-                    {files.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {files.map((item, index) => (
-                                <Card key={index} className={styles.fileCard}>
-                                    <Avatar
-                                        icon={getFileIcon(item.file.name)}
-                                        color="colorful"
-                                        active="active"
-                                        size={48}
-                                    />
-                                    <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                                        <Text weight="bold" size={400}>{item.file.name}</Text>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                                            <Badge appearance={item.broker && item.broker !== 'Neznámý broker' ? "filled" : "outline"} color={item.broker && item.broker !== 'Neznámý broker' ? "brand" : "danger"}>
-                                                {item.broker || 'Neznámý'}
-                                            </Badge>
-                                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>{(item.file.size / 1024).toFixed(1)} KB</Text>
-                                        </div>
-                                    </div>
-                                    {!uploading && (
-                                        <Button icon={<Dismiss24Regular />} appearance="subtle" onClick={() => handleRemoveFile(index)} aria-label="Zrušit" />
-                                    )}
-                                </Card>
-                            ))}
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
-                                <Button appearance="secondary" onClick={() => document.getElementById('fileInputAdd')?.click()}>
-                                    {t('import.add_btn')}
-                                </Button>
-                                <input
-                                    type="file"
-                                    id="fileInputAdd"
-                                    style={{ display: 'none' }}
-                                    onChange={handleFileSelect}
-                                    multiple
-                                />
-
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    <Button
-                                        appearance="outline"
-                                        size="large"
-                                        onClick={handleUpload}
-                                        disabled={uploading}
-                                    >
-                                        Legacy Web
-                                    </Button>
-                                    <Button
-                                        appearance="primary"
-                                        size="large"
-                                        icon={<ArrowUpload24Regular />}
-                                        onClick={handleUploadV3}
-                                        disabled={uploading}
-                                        style={{ minWidth: '180px' }}
-                                    >
-                                        {uploading ? t('import.working') : `Import to V3 (Postgres)`}
-                                    </Button>
-                                </div>
-                            </div>
-
-                        </div>
-                    )}
-
-                    {(logs.length > 0) && (
-                        <Card className={styles.logBox} ref={logContainerRef}>
-                            {logs.map((L, i) => <div key={i}>{L}</div>)}
+    if (step === 2) {
+        return (
+            <PageLayout>
+                <PageHeader>
+                    <Toolbar>
+                        <ToolbarButton icon={<DocumentAdd24Regular />} onClick={() => document.getElementById('fileInputMore')?.click()}>Přidat další</ToolbarButton>
+                        <input type="file" id="fileInputMore" style={{ display: 'none' }} onChange={(e) => e.target.files && handleAnalyze(e.target.files)} multiple />
+                        <ToolbarDivider />
+                        <ToolbarButton appearance="primary" icon={<Play24Regular />} disabled={analyzing || importing} onClick={handleExecuteImport}>Zahájit import</ToolbarButton>
+                        <ToolbarButton icon={<Dismiss24Regular />} onClick={reset}>Zrušit</ToolbarButton>
+                    </Toolbar>
+                </PageHeader>
+                <PageContent>
+                    <div className={styles.container}>
+                        <Card className={styles.card}>
+                            <Text size={500} weight="semibold">Diagnostika souborů</Text>
+                            {analyzing ? <ProgressBar /> : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHeaderCell>Soubor</TableHeaderCell>
+                                            <TableHeaderCell>Poskytovatel</TableHeaderCell>
+                                            <TableHeaderCell>Typ</TableHeaderCell>
+                                            <TableHeaderCell>Nalezeno</TableHeaderCell>
+                                            <TableHeaderCell>Akce</TableHeaderCell>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {diagnostics.map((d, i) => (
+                                            <TableRow key={i}>
+                                                <TableCell className={styles.tableCell}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {getFileIcon(d.extension)}
+                                                        <Text>{d.filename}</Text>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className={styles.tableCell}>
+                                                    <Dropdown
+                                                        size="small"
+                                                        value={d.broker}
+                                                        placeholder="Vyberte parser"
+                                                        onOptionSelect={(_, data) => handleRuleChange(d.temp_file, Number(data.optionValue))}
+                                                    >
+                                                        {rules.map(r => (
+                                                            <Option key={r.id} value={r.id.toString()}>{r.broker_name}</Option>
+                                                        ))}
+                                                    </Dropdown>
+                                                </TableCell>
+                                                <TableCell className={styles.tableCell}><Badge appearance="outline">{d.asset_type}</Badge></TableCell>
+                                                <TableCell className={styles.tableCell}>
+                                                    <Badge color={d.tx_count > 0 ? "success" : "danger"}>{d.tx_count} transakcí</Badge>
+                                                </TableCell>
+                                                <TableCell className={styles.tableCell}>
+                                                    <Button size="small" icon={<Dismiss24Regular />} appearance="subtle" onClick={() => setDiagnostics(p => p.filter((_, idx) => idx !== i))} />
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
                         </Card>
-                    )}
+                        {importing && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <ProgressBar />
+                                <Text size={200} align="center">Importuji do PostgreSQL...</Text>
+                            </div>
+                        )}
+                    </div>
+                </PageContent>
+            </PageLayout>
+        );
+    }
 
-                    {uploading && <ProgressBar />}
+    // Step 3: Results
+    return (
+        <PageLayout>
+            <PageHeader>
+                <Toolbar>
+                    <ToolbarButton icon={<ArrowSync24Regular />} onClick={reset}>Nový import</ToolbarButton>
+                </Toolbar>
+            </PageHeader>
+            <PageContent>
+                <div className={styles.container}>
+                    <Card className={styles.card}>
+                        <Text size={500} weight="semibold">Výsledek zpracování</Text>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Soubor</TableHeaderCell>
+                                    <TableHeaderCell>Nalezeno</TableHeaderCell>
+                                    <TableHeaderCell>Uloženo</TableHeaderCell>
+                                    <TableHeaderCell>Duplicity</TableHeaderCell>
+                                    <TableHeaderCell>Stav</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {results.map((r, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell className={styles.tableCell}>{r.filename}</TableCell>
+                                        <TableCell className={styles.tableCell}>{r.found}</TableCell>
+                                        <TableCell className={styles.tableCell}><Text weight="bold" style={{ color: tokens.colorPaletteGreenForeground1 }}>{r.inserted}</Text></TableCell>
+                                        <TableCell className={styles.tableCell}><Text style={{ color: tokens.colorNeutralForeground4 }}>{r.skipped}</Text></TableCell>
+                                        <TableCell className={styles.tableCell}>
+                                            <Badge color="success" icon={<CheckmarkCircle24Regular />}>OK</Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </Card>
                 </div>
             </PageContent>
         </PageLayout>

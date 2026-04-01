@@ -14,9 +14,9 @@ class ImportManager {
     }
 
     /**
-     * Identifies the broker and config based on rules and processes the file.
+     * Analyzes a file and returns metadata + potential transactions without saving.
      */
-    public function processFile(string $filePath, string $originalName = ''): array {
+    public function analyzeFile(string $filePath, string $originalName = ''): array {
         if (!file_exists($filePath)) {
             throw new \Exception("Soubor nebyl nalezen.");
         }
@@ -24,24 +24,69 @@ class ImportManager {
         $filename = $originalName ?: basename($filePath);
         $content = $this->extractContent($filePath, $filename);
         
-        // 1. DISCOVERY - Find rule using DB
+        // 1. DISCOVERY
         $rule = $this->discoverRule($filename, $content);
+        
+        // 2. PARSING (Dry Run)
+        $transactions = [];
+        $parserName = 'Neznámý';
+        $parserClass = $rule ? $rule['parser_class'] : null;
+
+        if ($parserClass) {
+            if (!class_exists($parserClass)) {
+                $this->loadParserFile($parserClass);
+            }
+            if (class_exists($parserClass)) {
+                $parser = new $parserClass();
+                $parserName = $parser->getName();
+                $transactions = $parser->parse($content);
+            }
+        }
+
+        return [
+            'filename' => $filename,
+            'extension' => strtolower(pathinfo($filename, PATHINFO_EXTENSION)),
+            'broker' => $rule ? $rule['broker_name'] : 'Neznámý',
+            'parser' => $parserName,
+            'parser_class' => $parserClass,
+            'tx_count' => count($transactions),
+            'rule_id' => $rule ? $rule['id'] : null,
+            'asset_type' => $this->guessAssetTypeFromRule($rule),
+            'content_preview' => mb_substr($content, 0, 500)
+        ];
+    }
+
+    /**
+     * Processes the file using a specific rule ID or auto-discovery.
+     */
+    public function processFile(string $filePath, string $originalName = '', ?int $ruleId = null): array {
+        if (!file_exists($filePath)) {
+            throw new \Exception("Soubor nebyl nalezen.");
+        }
+
+        $filename = $originalName ?: basename($filePath);
+        $content = $this->extractContent($filePath, $filename);
+        
+        $rule = null;
+        if ($ruleId) {
+            $stmt = $this->pdo->prepare("SELECT * FROM broker_import_rules WHERE id = ?");
+            $stmt->execute([$ruleId]);
+            $rule = $stmt->fetch(\PDO::FETCH_ASSOC);
+        }
+
+        if (!$rule) {
+            $rule = $this->discoverRule($filename, $content);
+        }
+
         if (!$rule) {
             throw new \Exception("Chyba: Žádný z poskytovatelů nebyl rozpoznán pro soubor '$filename'.");
         }
 
-        // 2. PARSING
         $parserClass = $rule['parser_class'];
         if (!class_exists($parserClass)) {
-            // Lazy load or manual requirement might be needed depending on autoloader
             $this->loadParserFile($parserClass);
         }
 
-        if (!class_exists($parserClass)) {
-            throw new \Exception("Parser class '$parserClass' nebyla nalezena.");
-        }
-
-        /** @var AbstractParser $parser */
         $parser = new $parserClass();
         $transactions = $parser->parse($content);
 
@@ -51,6 +96,22 @@ class ImportManager {
             'parser' => $parser->getName(),
             'transactions' => $transactions
         ];
+    }
+
+    /**
+     * Returns all configured import rules for manual selection.
+     */
+    public function getAvailableRules(): array {
+        $stmt = $this->pdo->query("SELECT id, config_name, broker_name FROM broker_import_rules ORDER BY broker_name");
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    private function guessAssetTypeFromRule(?array $rule): string {
+        if (!$rule) return 'Neznámý';
+        $name = strtolower($rule['broker_name'] . ' ' . $rule['config_name']);
+        if (strpos($name, 'crypto') !== false) return 'Crypto';
+        if (strpos($name, 'commodity') !== false) return 'Komodita';
+        return 'Akcie/ETF';
     }
 
     /**
@@ -108,6 +169,13 @@ class ImportManager {
         // Simple mapping Broker\V3\Import\Pdf\RevolutTradingPdfParser -> Import/Pdf/RevolutTradingPdfParser.php
         $relPath = str_replace(['Broker\\V3\\Import\\', '\\'], ['', '/'], $className) . '.php';
         $fullPath = __DIR__ . '/' . $relPath;
+        
+        // Handle namespaced cases or direct files
+        if (!file_exists($fullPath)) {
+             // Fallback to basename just in case
+             $fullPath = __DIR__ . '/' . basename($relPath);
+        }
+
         if (file_exists($fullPath)) {
             require_once $fullPath;
         }

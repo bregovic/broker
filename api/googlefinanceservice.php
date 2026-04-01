@@ -644,8 +644,8 @@ class GoogleFinanceService
                 continue;
             }
 
-            // Cena
-            if (preg_match('~<div[^>]+class="[^"]*YMlKec[^"]*fxKbKc[^"]*"[^>]*>(.*?)</div>~s', $html, $m)) {
+            // Cena (Current Price) - Classes: YMlS7e (New), YMlKec fxKbKc (Old)
+            if (preg_match('~<div[^>]+class="[^"]*(?:YMlS7e|YMlKec[^"]*fxKbKc)[^"]*"[^>]*>(.*?)</div>~s', $html, $m)) {
                 $text = strip_tags(htmlspecialchars_decode($m[1], ENT_QUOTES | ENT_HTML5));
                 $text = str_replace(["\xc2\xa0", ' ', ','], '', $text);
                 $text = preg_replace('/[^\d\.\-]/', '', $text);
