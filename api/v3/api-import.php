@@ -75,36 +75,55 @@ try {
         }
 
         foreach ($filesArr as $file) {
+            $analysis = [
+                'filename' => $file['name'],
+                'extension' => strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)),
+                'broker' => 'Neznámý',
+                'parser' => 'Neznámý',
+                'parser_class' => null,
+                'tx_count' => 0,
+                'rule_id' => null,
+                'asset_type' => 'Neznámý',
+                'temp_file' => '',
+                'success' => false,
+                'error' => null
+            ];
+
             try {
                 if ($file['error'] !== UPLOAD_ERR_OK) {
-                    throw new \Exception("Chyba uploadu (kód " . $file['error'] . ") u souboru " . $file['name']);
+                    throw new \Exception("Chyba uploadu: " . ($file['error'] ?? 'unknown'));
                 }
 
                 $tempName = uniqid('imp_') . '_' . preg_replace('/[^a-z0-9.]/i', '_', $file['name']);
                 $tempPath = $tempDir . '/' . $tempName;
                 
                 if (move_uploaded_file($file['tmp_name'], $tempPath)) {
-                    $analysis = $manager->analyzeFile($tempPath, $file['name']);
+                    $details = $manager->analyzeFile($tempPath, $file['name']);
+                    $analysis = array_merge($analysis, $details);
                     $analysis['temp_file'] = $tempName;
                     $analysis['success'] = true;
-                    $results[] = $analysis;
                 } else {
-                    throw new \Exception("Chyba při přesunu souboru do tempu ($tempPath).");
+                    throw new \Exception("Chyba při přesunu do tempu.");
                 }
             } catch (Throwable $e) {
-                $results[] = [
-                    'filename' => $file['name'] ?? 'Neznámý',
-                    'success' => false,
-                    'error' => $e->getMessage()
-                ];
+                $analysis['error'] = $e->getMessage();
             }
+            $results[] = $analysis;
         }
 
         echo json_encode([
             'success' => true, 
             'data' => $results, 
-            'debug_files_received' => count($filesArr),
-            'debug_php_files_keys' => array_keys($_FILES)
+            'debug' => [
+                'files_count' => count($filesArr),
+                'raw_files_keys' => array_keys($_FILES),
+                'raw_files_struct' => array_map(function($f) { 
+                    return [
+                        'name' => is_array($f['name']) ? 'ARRAY(' . count($f['name']) . ')' : $f['name'],
+                        'error' => is_array($f['error']) ? 'ARRAY' : $f['error']
+                    ]; 
+                }, $_FILES)
+            ]
         ]);
         exit;
     }
