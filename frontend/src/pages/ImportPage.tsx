@@ -131,9 +131,7 @@ const ImportPage = () => {
         Array.from(fileList).forEach(f => formData.append('files[]', f));
 
         try {
-            const res = await axios.post('/api/v3/api-import.php?action=analyze', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const res = await axios.post('/api/v3/api-import.php?action=analyze', formData);
             console.log('[DEBUG] Analyze response:', res.data);
             if (res.data.success) {
                 setDiagnostics(res.data.data || []);
