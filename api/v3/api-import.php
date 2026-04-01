@@ -9,6 +9,10 @@ require_once 'Import/TransactionDTO.php';
 require_once 'Import/AbstractParser.php';
 require_once 'Import/ImportManager.php';
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 header('Content-Type: application/json; charset=utf-8');
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
@@ -36,7 +40,7 @@ if ($action === 'analyze') {
     }
 
     $results = [];
-    $tempDir = __DIR__ . '/temp_import';
+    $tempDir = sys_get_temp_dir() . '/investyx_import';
     if (!is_dir($tempDir)) mkdir($tempDir, 0777, true);
 
     // Normalize multiple files
@@ -94,7 +98,7 @@ if ($action === 'import') {
     
     try {
         foreach ($items as $item) {
-            $tempPath = __DIR__ . '/temp_import/' . $item['temp_file'];
+            $tempPath = sys_get_temp_dir() . '/investyx_import/' . $item['temp_file'];
             if (!file_exists($tempPath)) continue;
 
             $ruleId = isset($item['rule_id']) ? (int)$item['rule_id'] : null;
