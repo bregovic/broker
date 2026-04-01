@@ -100,7 +100,12 @@ try {
             }
         }
 
-        echo json_encode(['success' => true, 'data' => $results]);
+        echo json_encode([
+            'success' => true, 
+            'data' => $results, 
+            'debug_files_received' => count($filesArr),
+            'debug_php_files_keys' => array_keys($_FILES)
+        ]);
         exit;
     }
 
