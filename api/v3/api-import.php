@@ -38,7 +38,7 @@ try {
     // 1. ANALYZE (Stage 1) - Multiple files
     if ($action === 'analyze') {
         if (empty($_FILES)) {
-            echo json_encode(['success' => false, 'message' => 'Nebyly zaslány žádné soubory.']);
+            echo json_encode(['success' => false, 'message' => 'Nebyly zaslány žádné soubory (prázdné $_FILES).']);
             exit;
         }
 
@@ -50,23 +50,28 @@ try {
             }
         }
 
-        // Normalize multiple files
+        // --- UNIFIED FILE COLLECTION ---
         $filesArr = [];
-        if (isset($_FILES['file'])) {
-            $filesArr[] = $_FILES['file'];
-        } elseif (isset($_FILES['files']['name'])) {
-            // Handle files[] array from frontend
-            foreach ($_FILES['files']['name'] as $i => $name) {
-                $filesArr[] = [
-                    'name' => $name,
-                    'tmp_name' => $_FILES['files']['tmp_name'][$i],
-                    'error' => $_FILES['files']['error'][$i],
-                    'size' => $_FILES['files']['size'][$i]
-                ];
+        foreach ($_FILES as $inputName => $info) {
+            if (is_array($info['name'])) {
+                // Multi-file array (e.g. files[] or multiple fields)
+                foreach ($info['name'] as $i => $name) {
+                    $filesArr[] = [
+                        'name' => $name,
+                        'tmp_name' => $info['tmp_name'][$i],
+                        'error' => $info['error'][$i],
+                        'size' => $info['size'][$i]
+                    ];
+                }
+            } else {
+                // Single file upload
+                $filesArr[] = $info;
             }
-        } elseif (isset($_FILES['files'])) {
-            // Standard single or multi field without array notation
-             $filesArr[] = $_FILES['files'];
+        }
+
+        if (empty($filesArr)) {
+            echo json_encode(['success' => false, 'message' => 'Nalezen $_FILES, ale žádné platné soubory. Klíče: ' . implode(', ', array_keys($_FILES))]);
+            exit;
         }
 
         foreach ($filesArr as $file) {
