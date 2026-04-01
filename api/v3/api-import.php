@@ -38,23 +38,28 @@ try {
     // 1. ANALYZE (Stage 1) - Multiple files
     if ($action === 'analyze') {
         if (empty($_FILES)) {
-            echo json_encode(['success' => false, 'message' => 'Nebyly zaslány žádné soubory (prázdné $_FILES).']);
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Nebyly zaslány žádné soubory (prázdné $_FILES).',
+                'debug' => ['post_data' => array_keys($_POST), 'server' => $_SERVER['REQUEST_METHOD']]
+            ]);
             exit;
         }
 
-        $results = [];
-        $tempDir = sys_get_temp_dir() . '/investyx_import';
-        if (!is_dir($tempDir)) {
-            if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
-                throw new \Exception("Nelze vytvořit dočasný adresář: $tempDir");
-            }
-        }
+        // AUTO-CREATE staging table if it doesn't exist
+        $db->exec("CREATE TABLE IF NOT EXISTS import_staging (
+            staging_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            filename TEXT NOT NULL,
+            file_content BYTEA NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )");
 
-        // --- UNIFIED FILE COLLECTION ---
+        $results = [];
+        
+        // Unified file collection
         $filesArr = [];
         foreach ($_FILES as $inputName => $info) {
             if (is_array($info['name'])) {
-                // Multi-file array (e.g. files[] or multiple fields)
                 foreach ($info['name'] as $i => $name) {
                     $filesArr[] = [
                         'name' => $name,
@@ -64,14 +69,8 @@ try {
                     ];
                 }
             } else {
-                // Single file upload
                 $filesArr[] = $info;
             }
-        }
-
-        if (empty($filesArr)) {
-            echo json_encode(['success' => false, 'message' => 'Nalezen $_FILES, ale žádné platné soubory. Klíče: ' . implode(', ', array_keys($_FILES))]);
-            exit;
         }
 
         foreach ($filesArr as $file) {
@@ -94,17 +93,21 @@ try {
                     throw new \Exception("Chyba uploadu: " . ($file['error'] ?? 'unknown'));
                 }
 
-                $tempName = uniqid('imp_') . '_' . preg_replace('/[^a-z0-9.]/i', '_', $file['name']);
-                $tempPath = $tempDir . '/' . $tempName;
+                // SAVE TO POSTGRES instead of Local Disk
+                $content = file_get_contents($file['tmp_name']);
+                if ($content === false) throw new \Exception("Nelze přečíst tmp soubor: " . $file['tmp_name']);
+
+                $stmt = $db->prepare("INSERT INTO import_staging (filename, file_content) VALUES (?, ?) RETURNING staging_id");
+                $stmt->execute([$file['name'], $content]);
+                $stagingId = $stmt->fetchColumn();
+
+                // ANALYZE directly
+                // (We analyze the current upload's tmp_name to save a DB roundtrip now)
+                $details = $manager->analyzeFile($file['tmp_name'], $file['name']);
+                $analysis = array_merge($analysis, $details);
+                $analysis['temp_file'] = $stagingId;
+                $analysis['success'] = true;
                 
-                if (move_uploaded_file($file['tmp_name'], $tempPath)) {
-                    $details = $manager->analyzeFile($tempPath, $file['name']);
-                    $analysis = array_merge($analysis, $details);
-                    $analysis['temp_file'] = $tempName;
-                    $analysis['success'] = true;
-                } else {
-                    throw new \Exception("Chyba při přesunu do tempu.");
-                }
             } catch (Throwable $e) {
                 $analysis['error'] = $e->getMessage();
             }
@@ -119,12 +122,7 @@ try {
                 'php_post_max' => ini_get('post_max_size'),
                 'php_upload_max' => ini_get('upload_max_filesize'),
                 'php_memory_limit' => ini_get('memory_limit'),
-                'raw_files_struct' => array_map(function($f) { 
-                    return [
-                        'name' => is_array($f['name']) ? 'ARRAY(' . count($f['name']) . ')' : $f['name'],
-                        'error' => is_array($f['error']) ? 'ARRAY' : $f['error']
-                    ]; 
-                }, $_FILES)
+                'content_length' => $_SERVER['CONTENT_LENGTH'] ?? 0
             ]
         ]);
         exit;
@@ -145,11 +143,19 @@ try {
         
         try {
             foreach ($items as $item) {
-                $tempPath = sys_get_temp_dir() . '/investyx_import/' . $item['temp_file'];
-                if (!file_exists($tempPath)) continue;
+                // FETCH FROM POSTGRES STAGING
+                $stmt = $db->prepare("SELECT filename, file_content FROM import_staging WHERE staging_id = ?");
+                $stmt->execute([$item['temp_file']]);
+                $row = $stmt->fetch();
+                
+                if (!$row) continue;
+
+                // Write to temp file for pdftotext/parsing
+                $tempPath = sys_get_temp_dir() . '/imp_' . $item['temp_file'];
+                file_put_contents($tempPath, $row['file_content']);
 
                 $ruleId = isset($item['rule_id']) ? (int)$item['rule_id'] : null;
-                $result = $manager->processFile($tempPath, '', $ruleId);
+                $result = $manager->processFile($tempPath, $row['filename'], $ruleId);
                 $transactions = $result['transactions'];
 
                 $inserted = 0;
@@ -161,19 +167,19 @@ try {
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT (broker_trade_id) DO NOTHING";
                     
-                    $stmt = $db->prepare($sql);
-                    $stmt->execute([
+                    $stmtIns = $db->prepare($sql);
+                    $stmtIns->execute([
                         $data['ticker'], $data['transaction_date'], $data['type'], $data['quantity'],
                         $data['price_per_unit'], $data['currency'], $data['fee'], $data['total_amount'],
                         $data['source_broker'], $data['broker_trade_id'], $data['metadata']
                     ]);
                     
-                    if ($stmt->rowCount() > 0) $inserted++;
+                    if ($stmtIns->rowCount() > 0) $inserted++;
                     else $skipped++;
                 }
 
                 $summary[] = [
-                    'filename' => $item['filename'] ?? $item['temp_file'],
+                    'filename' => $row['filename'],
                     'parser' => $result['parser'],
                     'found' => count($transactions),
                     'inserted' => $inserted,
@@ -181,7 +187,9 @@ try {
                     'success' => true
                 ];
                 
+                // Cleanup
                 @unlink($tempPath);
+                $db->prepare("DELETE FROM import_staging WHERE staging_id = ?")->execute([$item['temp_file']]);
             }
 
             $db->commit();
@@ -194,40 +202,14 @@ try {
         exit;
     }
 
-    // LEGACY / SINGLE STEP Fallback
-    if (isset($_FILES['file'])) {
-        $file = $_FILES['file'];
-        $result = $manager->processFile($file['tmp_name'], $file['name']);
-        $transactions = $result['transactions'];
-
-        $db->beginTransaction();
-        $inserted = 0;
-        foreach ($transactions as $t) {
-            $data = $t->toArray();
-            $sql = "INSERT INTO transactions 
-                    (ticker, transaction_date, type, quantity, price_per_unit, currency, fee, total_amount, source_broker, broker_trade_id, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (broker_trade_id) DO NOTHING";
-            $stmt = $db->prepare($sql);
-            $stmt->execute([
-                $data['ticker'], $data['transaction_date'], $data['type'], $data['quantity'],
-                $data['price_per_unit'], $data['currency'], $data['fee'], $data['total_amount'],
-                $data['source_broker'], $data['broker_trade_id'], $data['metadata']
-            ]);
-            if ($stmt->rowCount() > 0) $inserted++;
-        }
-        $db->commit();
-
-        echo json_encode(['success' => true, 'inserted' => $inserted, 'found' => count($transactions), 'parser' => $result['parser']]);
-        exit;
-    }
-
     echo json_encode(['success' => false, 'message' => 'Neznámá akce nebo chybějící data.']);
 
 } catch (Throwable $e) {
     echo json_encode([
         'success' => false, 
         'message' => 'KRITICKÁ CHYBA: ' . $e->getMessage(),
-        'trace' => $e->getTraceAsString()
+        'trace' => $e->getTraceAsString(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
     ]);
 }
