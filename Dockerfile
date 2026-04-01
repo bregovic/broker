@@ -23,7 +23,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Setup Backendu
 WORKDIR /var/www/html
-COPY api/ ./
+COPY api/ ./api/
 
 # Kopírujeme zkompilovaný Frontend z prvního kroku
 COPY --from=frontend-builder /app/dist/. ./public
