@@ -51,7 +51,7 @@ const useStyles = makeStyles({
         }
     },
     dragging: {
-        borderColor: tokens.colorBrandStroke1,
+        borderColor: tokens.colorBrandStroke1 as any,
         backgroundColor: '#eef2ff'
     },
     resultSummary: {
@@ -255,7 +255,7 @@ export const ImportPage: React.FC = () => {
                                                 style={{ width: '100%', minWidth: '180px' }}
                                                 value={d.broker}
                                                 placeholder={t('import.col_parser')}
-                                                onOptionSelect={(e, data) => handleRuleChange(d.temp_file, Number(data.optionValue))}
+                                                onOptionSelect={(_, data) => handleRuleChange(d.temp_file, Number(data.optionValue))}
                                             >
                                                 {rules.map(r => (
                                                     <Option key={r.id} value={String(r.id)} text={r.rule_name}>{r.rule_name} ({r.broker_name})</Option>
