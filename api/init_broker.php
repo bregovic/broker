@@ -50,20 +50,26 @@ try {
     }
 
     try {
-        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_broker_trade_id ON transactions (broker_trade_id)");
-    } catch (Exception $e) {}
+        $pdo->exec("ALTER TABLE broker_import_rules ADD CONSTRAINT unique_config_name UNIQUE (config_name)");
+    } catch (Exception $e) { /* ignore if already exists */ }
 
     // 3. SEEDING RULES
     $rules = [
-        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|account-statement.*cs-cz', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
+        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|trading-account-statement|account-statement', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
         ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny'],
         ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser', 'revolut.*commodity|account-statement.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)|Exchanged to.*(XAU|XAG|XPT|XPD)|Drahé kovy|Komodity']
     ];
 
-    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, parser_class, file_pattern, content_regex) VALUES (?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, parser_class, file_pattern, content_regex) 
+                           VALUES (?, ?, ?, ?, ?) 
+                           ON CONFLICT (config_name) DO UPDATE SET 
+                           broker_name = EXCLUDED.broker_name,
+                           parser_class = EXCLUDED.parser_class,
+                           file_pattern = EXCLUDED.file_pattern,
+                           content_regex = EXCLUDED.content_regex");
     foreach ($rules as $rule) {
         $stmt->execute($rule);
-        echo "SEEDED RULE: {$rule[1]}\n";
+        echo "SEEDED/UPDATED RULE: {$rule[1]}\n";
     }
 
     echo "\nALL DONE! SYSTEM IS CLEAN AND READY.";
