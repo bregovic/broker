@@ -15,7 +15,8 @@ import {
     DocumentPdf24Regular,
     Table24Regular,
     Delete24Regular
-} from "@fluentui/icons-react";
+} from "@fluentui/react-icons";
+import { useTranslation } from '../context/TranslationContext';
 
 const useStyles = makeStyles({
     container: {
@@ -45,7 +46,7 @@ const useStyles = makeStyles({
         transition: 'all 0.2s ease',
         backgroundColor: '#fafafa',
         ':hover': {
-            borderColor: tokens.colorBrandStroke1,
+            borderColor: tokens.colorBrandStroke1 as any,
             backgroundColor: '#f0f4ff'
         }
     },
@@ -82,6 +83,7 @@ interface Rule {
 
 export const ImportPage: React.FC = () => {
     const styles = useStyles();
+    const { t } = useTranslation();
     const [step, setStep] = useState(1);
     const [analyzing, setAnalyzing] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -256,7 +258,7 @@ export const ImportPage: React.FC = () => {
                                                 onOptionSelect={(e, data) => handleRuleChange(d.temp_file, Number(data.optionValue))}
                                             >
                                                 {rules.map(r => (
-                                                    <Option key={r.id} value={String(r.id)}>{r.rule_name} ({r.broker_name})</Option>
+                                                    <Option key={r.id} value={String(r.id)} text={r.rule_name}>{r.rule_name} ({r.broker_name})</Option>
                                                 ))}
                                             </Dropdown>
                                         </TableCell>

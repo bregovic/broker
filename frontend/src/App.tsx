@@ -1,5 +1,3 @@
-
-import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 import { RouterProvider, createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import Layout from './components/Layout';
 import MarketPage from './pages/MarketPage';
