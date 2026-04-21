@@ -20,7 +20,10 @@ class RevolutTradingPdfParser extends AbstractParser {
     }
 
     public function canParse(string $content, string $filename): bool {
-        return preg_match('/Account Statement|USD Transactions|Výpis z účtu|Transakce v USD/ui', $content);
+        // Broaden matching for Revolut statements
+        $isRevolut = preg_match('/Account Statement|USD Transactions|Výpis z účtu|Transakce v USD|revolut|trading-account/ui', $content);
+        $isFilenameMatch = preg_match('/revolut|trading-account-statement|account-statement/ui', $filename);
+        return $isRevolut || $isFilenameMatch;
     }
 
     public function parse(string $content): array {
