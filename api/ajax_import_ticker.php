@@ -24,43 +24,11 @@ if (empty($ticker)) {
     die(json_encode(['success' => false, 'message' => 'Ticker je povinný']));
 }
 
-// Database connection
-$envPaths = [
-    __DIR__ . '/env.local.php',
-    __DIR__ . '/../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__ . '/../../env.local.php',
-    __DIR__ . '/php/env.local.php',
-    __DIR__ . '/env.php',
-    __DIR__ . '/../env.php',
-    __DIR__ . '/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-
-foreach ($envPaths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        break;
-    }
-}
-
-// Fallback: try direct include if in path
-if (!defined('DB_HOST') && stream_resolve_include_path('env.local.php')) {
-    require_once 'env.local.php';
-}
-
-if (!defined('DB_HOST')) {
-    $scanned = implode(', ', $envPaths);
-    die(json_encode(['success' => false, 'message' => "Chyba konfigurace databáze. CWD: " . getcwd() . ". Scanned: $scanned"]));
-}
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO(
-        "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8",
-        DB_USER,
-        DB_PASS,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
+    $pdo = get_pdo();
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     
     // Try to use GoogleFinanceService
     $servicePaths = [
@@ -90,21 +58,57 @@ try {
             // 1. Save to Ticker Mapping using fetched Data
             $company = $data['company_name'] ?? $data['ticker'];
             $currency = $data['currency'] ?? 'USD';
-            $isin = ''; // Google Finance usually doesn't return ISIN, keep empty or null
+            $isin = ''; 
             
-            $sqlMap = "INSERT INTO ticker_mapping (ticker, company_name, isin, currency, status, last_verified)
-                       VALUES (:ticker, :company, :isin, :currency, 'verified', NOW())
-                       ON DUPLICATE KEY UPDATE
-                           company_name = VALUES(company_name),
-                           currency = VALUES(currency),
-                           last_verified = NOW(),
-                           status = 'verified'";
+            if ($driver === 'pgsql') {
+                $sqlMap = "INSERT INTO ticker_mapping (ticker, company_name, isin, currency, status, last_verified)
+                           VALUES (:ticker, :company, :isin, :currency, 'verified', NOW())
+                           ON CONFLICT (ticker) DO UPDATE SET
+                               company_name = EXCLUDED.company_name,
+                               currency = EXCLUDED.currency,
+                               last_verified = NOW(),
+                               status = 'verified'";
+            } else {
+                $sqlMap = "INSERT INTO ticker_mapping (ticker, company_name, isin, currency, status, last_verified)
+                           VALUES (:ticker, :company, :isin, :currency, 'verified', NOW())
+                           ON DUPLICATE KEY UPDATE
+                               company_name = VALUES(company_name),
+                               currency = VALUES(currency),
+                               last_verified = NOW(),
+                               status = 'verified'";
+            }
+            
             $stmtMap = $pdo->prepare($sqlMap);
             $stmtMap->execute([
                 ':ticker' => $ticker,
                 ':company' => $company,
                 ':isin' => $isin,
                 ':currency' => $currency
+            ]);
+
+            // Save to live_quotes too so it appears in market overview immediately
+            if ($driver === 'pgsql') {
+                $sqlLive = "INSERT INTO live_quotes (ticker, price, change_percent, currency, last_fetched, exchange)
+                            VALUES (?, ?, ?, ?, NOW(), ?)
+                            ON CONFLICT (ticker) DO UPDATE SET
+                                price = EXCLUDED.price,
+                                change_percent = EXCLUDED.change_percent,
+                                last_fetched = NOW()";
+            } else {
+                $sqlLive = "INSERT INTO live_quotes (ticker, price, change_percent, currency, last_fetched, exchange)
+                            VALUES (?, ?, ?, ?, NOW(), ?)
+                            ON DUPLICATE KEY UPDATE
+                                price = VALUES(price),
+                                change_percent = VALUES(change_percent),
+                                last_fetched = NOW()";
+            }
+            $stmtLive = $pdo->prepare($sqlLive);
+            $stmtLive->execute([
+                $ticker, 
+                $data['current_price'], 
+                $data['change_percent'] ?? 0, 
+                $currency,
+                $data['exchange'] ?? 'UNKNOWN'
             ]);
 
             // 2. Resolve User ID for Watchlist
@@ -116,22 +120,26 @@ try {
                     break;
                 }
             }
-            if (!$userId && isset($_SESSION['user'])) {
-                $u = $_SESSION['user'];
-                if (is_array($u)) foreach ($candidates as $k) if (isset($u[$k]) && is_numeric($u[$k])) $userId = (int)$u[$k];
-                elseif (is_object($u)) foreach ($candidates as $k) if (isset($u->$k) && is_numeric($u->$k)) $userId = (int)$u->$k;
-            }
 
             if ($userId) {
                 // Add to watchlist
-                $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
-                    user_id INT NOT NULL,
-                    ticker VARCHAR(20) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (user_id, ticker)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-                $stmtWatch = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
+                if ($driver === 'pgsql') {
+                    $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
+                        user_id INT NOT NULL,
+                        ticker VARCHAR(20) NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, ticker)
+                    )");
+                    $stmtWatch = $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?) ON CONFLICT DO NOTHING");
+                } else {
+                    $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
+                        user_id INT NOT NULL,
+                        ticker VARCHAR(20) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, ticker)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    $stmtWatch = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
+                }
                 $stmtWatch->execute([$userId, $ticker]);
             }
 
@@ -149,7 +157,6 @@ try {
             ]);
             exit;
         } else {
-            // Service couldn't get data
             echo json_encode([
                 'success' => false,
                 'message' => "GoogleFinanceService nemohl získat data pro {$ticker}"
@@ -157,10 +164,9 @@ try {
             exit;
         }
     } else {
-        // GoogleFinanceService not available
         echo json_encode([
             'success' => false,
-            'message' => 'GoogleFinanceService není dostupný. Zkontrolujte, že soubor googlefinanceservice.php existuje.'
+            'message' => 'GoogleFinanceService není dostupný.'
         ]);
         exit;
     }

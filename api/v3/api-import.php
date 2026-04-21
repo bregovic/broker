@@ -35,8 +35,49 @@ try {
         exit;
     }
 
-    // 1. ANALYZE (Stage 1) - Multiple files
+    // 1. ANALYZE (Stage 1) - Multiple files or single re-analyze
     if ($action === 'analyze') {
+        $tempFileParam = $_GET['temp_file'] ?? $_POST['temp_file'] ?? null;
+        $ruleIdParam = $_GET['rule_id'] ?? $_POST['rule_id'] ?? null;
+
+        // AUTO-CREATE staging table
+        $db->exec("CREATE TABLE IF NOT EXISTS import_staging (
+            staging_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            filename TEXT NOT NULL,
+            file_content BYTEA NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )");
+
+        // Case A: Re-analyze existing staging file
+        if ($tempFileParam) {
+            $stmt = $db->prepare("SELECT * FROM import_staging WHERE staging_id = ?");
+            $stmt->execute([$tempFileParam]);
+            $stagingFile = $stmt->fetch();
+
+            if (!$stagingFile) {
+                echo json_encode(['success' => false, 'message' => 'Staging file not found: ' . $tempFileParam]);
+                exit;
+            }
+
+            // Write to a temporary file for the manager to analyze
+            $tmpPath = tempnam(sys_get_temp_dir(), 'import_');
+            file_put_contents($tmpPath, $stagingFile['file_content']);
+            
+            $details = $manager->analyzeFile($tmpPath, $stagingFile['filename'], $ruleIdParam);
+            unlink($tmpPath);
+
+            echo json_encode([
+                'success' => true,
+                'data' => [array_merge([
+                    'filename' => $stagingFile['filename'],
+                    'temp_file' => $tempFileParam,
+                    'success' => true
+                ], $details)]
+            ]);
+            exit;
+        }
+
+        // Case B: Upload and analyze new files
         if (empty($_FILES)) {
             echo json_encode([
                 'success' => false, 
@@ -46,17 +87,7 @@ try {
             exit;
         }
 
-        // AUTO-CREATE staging table if it doesn't exist
-        $db->exec("CREATE TABLE IF NOT EXISTS import_staging (
-            staging_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            filename TEXT NOT NULL,
-            file_content BYTEA NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )");
-
         $results = [];
-        
-        // Unified file collection
         $filesArr = [];
         foreach ($_FILES as $inputName => $info) {
             if (is_array($info['name'])) {
@@ -93,7 +124,6 @@ try {
                     throw new \Exception("Chyba uploadu: " . ($file['error'] ?? 'unknown'));
                 }
 
-                // SAVE TO POSTGRES instead of Local Disk
                 $content = file_get_contents($file['tmp_name']);
                 if ($content === false) throw new \Exception("Nelze přečíst tmp soubor: " . $file['tmp_name']);
 
@@ -101,8 +131,6 @@ try {
                 $stmt->execute([$file['name'], $content]);
                 $stagingId = $stmt->fetchColumn();
 
-                // ANALYZE directly
-                // (We analyze the current upload's tmp_name to save a DB roundtrip now)
                 $details = $manager->analyzeFile($file['tmp_name'], $file['name']);
                 $analysis = array_merge($analysis, $details);
                 $analysis['temp_file'] = $stagingId;
@@ -114,17 +142,7 @@ try {
             $results[] = $analysis;
         }
 
-        echo json_encode([
-            'success' => true, 
-            'data' => $results, 
-            'debug' => [
-                'files_count' => count($filesArr),
-                'php_post_max' => ini_get('post_max_size'),
-                'php_upload_max' => ini_get('upload_max_filesize'),
-                'php_memory_limit' => ini_get('memory_limit'),
-                'content_length' => $_SERVER['CONTENT_LENGTH'] ?? 0
-            ]
-        ]);
+        echo json_encode(['success' => true, 'data' => $results]);
         exit;
     }
 
