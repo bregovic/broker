@@ -102,7 +102,7 @@ class ImportManager {
      * Returns all configured import rules for manual selection.
      */
     public function getAvailableRules(): array {
-        $stmt = $this->pdo->query("SELECT id, config_name, broker_name FROM broker_import_rules ORDER BY broker_name");
+        $stmt = $this->pdo->query("SELECT id, config_name AS rule_name, broker_name FROM broker_import_rules ORDER BY broker_name");
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 

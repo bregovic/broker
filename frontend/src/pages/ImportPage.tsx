@@ -166,8 +166,8 @@ export const ImportPage: React.FC = () => {
         return (
             <div className={styles.container}>
                 <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <Title3 block>Import transakcí</Title3>
-                    <Caption1 block color="gray">Podporujeme Revolut (Trading/Crypto), Degiro, Trading212 a další.</Caption1>
+                    <Title3 block>{t('import.title')}</Title3>
+                    <Caption1 block color="gray">{t('import.desc')}</Caption1>
                 </div>
                 
                 <Card className={styles.card}>
@@ -179,8 +179,8 @@ export const ImportPage: React.FC = () => {
                         onClick={() => document.getElementById('fileInput')?.click()}
                     >
                         <DocumentAdd24Regular style={{ fontSize: '48px', color: tokens.colorBrandForeground1, marginBottom: '16px' }} />
-                        <Title3 block>Přetáhněte soubory sem</Title3>
-                        <Text block color="gray">Nebo klikněte pro výběr z počítače (PDF, CSV, Excel)</Text>
+                        <Title3 block>{t('import.drop_zone')}</Title3>
+                        <Text block color="gray">{t('import.drop_zone_sub')}</Text>
                         <input type="file" id="fileInput" style={{ display: 'none' }} onChange={(e) => e.target.files && handleAnalyze(e.target.files)} multiple />
                     </div>
                 </Card>
@@ -195,13 +195,13 @@ export const ImportPage: React.FC = () => {
                 <Card className={styles.card} appearance="subtle" style={{ backgroundColor: 'transparent', padding: '0', boxShadow: 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                         <div>
-                            <Title3 block style={{ fontWeight: 600 }}>Příprava k importu</Title3>
-                            <Caption1 block style={{ color: '#666' }}>Zkontrolujte identifikaci a klikněte na Zahájit import.</Caption1>
+                            <Title3 block style={{ fontWeight: 600 }}>{t('import.step2_title')}</Title3>
+                            <Caption1 block style={{ color: '#666' }}>{t('import.step2_desc')}</Caption1>
                         </div>
                         <div style={{ display: 'flex', gap: '12px' }}>
-                            <Button icon={<DocumentAdd24Regular />} appearance="secondary" onClick={() => document.getElementById('fileInputMore')?.click()}>Přidat další</Button>
-                            <Button icon={<Play24Regular />} appearance="primary" disabled={analyzing || importing || diagnostics.length === 0} onClick={handleExecuteImport}>Zahájit import</Button>
-                            <Button icon={<Dismiss24Regular />} appearance="subtle" onClick={reset}>Zrušit</Button>
+                            <Button icon={<DocumentAdd24Regular />} appearance="secondary" onClick={() => document.getElementById('fileInputMore')?.click()}>{t('import.btn_add_more')}</Button>
+                            <Button icon={<Play24Regular />} appearance="primary" disabled={analyzing || importing || diagnostics.length === 0} onClick={handleExecuteImport}>{t('import.btn_start')}</Button>
+                            <Button icon={<Dismiss24Regular />} appearance="subtle" onClick={reset}>{t('common.cancel')}</Button>
                         </div>
                     </div>
                     
@@ -211,10 +211,10 @@ export const ImportPage: React.FC = () => {
                         <Table aria-label="Diagnostic table" size="medium">
                             <TableHeader style={{ backgroundColor: '#f8f9fa' }}>
                                 <TableRow>
-                                    <TableHeaderCell style={{ width: '40%', paddingLeft: '24px' }}>Soubor</TableHeaderCell>
-                                    <TableHeaderCell style={{ width: '25%' }}>Parser / Poskytovatel</TableHeaderCell>
-                                    <TableHeaderCell style={{ width: '15%', textAlign: 'center' }}>Typ aktiv</TableHeaderCell>
-                                    <TableHeaderCell style={{ width: '15%', textAlign: 'right' }}>Nalezeno</TableHeaderCell>
+                                    <TableHeaderCell style={{ width: '40%', paddingLeft: '24px' }}>{t('import.col_file')}</TableHeaderCell>
+                                    <TableHeaderCell style={{ width: '25%' }}>{t('import.col_parser')}</TableHeaderCell>
+                                    <TableHeaderCell style={{ width: '15%', textAlign: 'center' }}>{t('import.col_asset_type')}</TableHeaderCell>
+                                    <TableHeaderCell style={{ width: '15%', textAlign: 'right' }}>{t('import.col_found')}</TableHeaderCell>
                                     <TableHeaderCell style={{ width: '5%' }} />
                                 </TableRow>
                             </TableHeader>
@@ -223,7 +223,7 @@ export const ImportPage: React.FC = () => {
                                     <TableRow>
                                         <TableCell colSpan={5}>
                                             <div style={{ padding: '60px', textAlign: 'center' }}>
-                                                <Text italic color="gray">Seznam je prázdný.</Text>
+                                                <Text italic color="gray">{t('import.empty_list')}</Text>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -252,7 +252,7 @@ export const ImportPage: React.FC = () => {
                                                 size="small"
                                                 style={{ width: '100%', minWidth: '180px' }}
                                                 value={d.broker}
-                                                placeholder="Vyberte parser..."
+                                                placeholder={t('import.col_parser')}
                                                 onOptionSelect={(e, data) => handleRuleChange(d.temp_file, Number(data.optionValue))}
                                             >
                                                 {rules.map(r => (
@@ -268,11 +268,11 @@ export const ImportPage: React.FC = () => {
                                         <TableCell className={styles.tableCell} style={{ textAlign: 'right', paddingRight: '20px' }}>
                                             {d.tx_count > 0 ? (
                                                 <Badge appearance="filled" color="success">
-                                                    {d.tx_count} transakcí
+                                                    {t('import.tx_count').replace('{count}', String(d.tx_count))}
                                                 </Badge>
                                             ) : (
                                                 <Badge appearance="filled" color="danger">
-                                                    0 transakcí
+                                                    {t('import.tx_count').replace('{count}', '0')}
                                                 </Badge>
                                             )}
                                         </TableCell>
@@ -291,7 +291,7 @@ export const ImportPage: React.FC = () => {
                                         <TableCell colSpan={5}>
                                             <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#fdfdfd' }}>
                                                 <ProgressBar />
-                                                <Text italic size={200} style={{ marginTop: '8px', display: 'block' }}>Analyzuji nahrané soubory...</Text>
+                                                <Text italic size={200} style={{ marginTop: '8px', display: 'block' }}>{t('import.analyzing')}</Text>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -311,23 +311,23 @@ export const ImportPage: React.FC = () => {
             <Card className={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                     <div>
-                        <Title3 block>Import dokončen</Title3>
-                        <Caption1 block color="gray">Zpracování všech souborů proběhlo úspěšně.</Caption1>
+                        <Title3 block>{t('import.step3_title')}</Title3>
+                        <Caption1 block color="gray">{t('import.step3_desc')}</Caption1>
                     </div>
-                    <Button icon={<ArrowSync24Regular />} appearance="primary" onClick={reset}>Nový import</Button>
+                    <Button icon={<ArrowSync24Regular />} appearance="primary" onClick={reset}>{t('import.btn_new_import')}</Button>
                 </div>
 
                 <div className={styles.resultSummary}>
                     <div style={{ flex: 1, backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', padding: '16px', borderRadius: '12px' }}>
-                        <Text block size={100} style={{ color: '#389e0d', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Uložené transakce</Text>
+                        <Text block size={100} style={{ color: '#389e0d', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('import.stats_inserted')}</Text>
                         <Subtitle1 block style={{ color: '#237804', fontSize: '24px' }}>{results.reduce((sum, r) => sum + r.inserted, 0)}</Subtitle1>
                     </div>
                     <div style={{ flex: 1, backgroundColor: '#f0faff', border: '1px solid #91d5ff', padding: '16px', borderRadius: '12px' }}>
-                        <Text block size={100} style={{ color: '#096dd9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Celkem nalezeno</Text>
+                        <Text block size={100} style={{ color: '#096dd9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('import.stats_found')}</Text>
                         <Subtitle1 block style={{ color: '#0050b3', fontSize: '24px' }}>{results.reduce((sum, r) => sum + r.found, 0)}</Subtitle1>
                     </div>
                     <div style={{ flex: 1, backgroundColor: '#f5f5f5', border: '1px solid #d9d9d9', padding: '16px', borderRadius: '12px' }}>
-                        <Text block size={100} style={{ color: '#595959', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Přeskočené (duplicity)</Text>
+                        <Text block size={100} style={{ color: '#595959', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('import.stats_skipped')}</Text>
                         <Subtitle1 block style={{ color: '#262626', fontSize: '24px' }}>{results.reduce((sum, r) => sum + r.skipped, 0)}</Subtitle1>
                     </div>
                 </div>
@@ -335,9 +335,9 @@ export const ImportPage: React.FC = () => {
                 <Table aria-label="Results summary">
                     <TableHeader>
                         <TableRow>
-                            <TableHeaderCell>Soubor</TableHeaderCell>
-                            <TableHeaderCell>Parser</TableHeaderCell>
-                            <TableHeaderCell style={{ textAlign: 'right' }}>Stav</TableHeaderCell>
+                            <TableHeaderCell>{t('import.col_file')}</TableHeaderCell>
+                            <TableHeaderCell>{t('import.col_parser')}</TableHeaderCell>
+                            <TableHeaderCell style={{ textAlign: 'right' }}>{t('import.col_status')}</TableHeaderCell>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -349,7 +349,7 @@ export const ImportPage: React.FC = () => {
                                 </TableCell>
                                 <TableCell className={styles.tableCell}><Caption1>{r.parser}</Caption1></TableCell>
                                 <TableCell className={styles.tableCell} style={{ textAlign: 'right' }}>
-                                    <Badge color="success" appearance="tint">Dokončeno</Badge>
+                                    <Badge color="success" appearance="tint">{t('common.done')}</Badge>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -359,3 +359,5 @@ export const ImportPage: React.FC = () => {
         </div>
     );
 };
+
+export default ImportPage;

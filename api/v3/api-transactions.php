@@ -5,8 +5,8 @@ use Broker\V3\DB;
 header('Content-Type: application/json');
 
 try {
-    // Basic select of transactions
-    $sql = "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT 500";
+    // Fixed column names: trans_id and transaction_date
+    $sql = "SELECT * FROM transactions ORDER BY transaction_date DESC, trans_id DESC LIMIT 500";
     $stmt = DB::query($sql);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

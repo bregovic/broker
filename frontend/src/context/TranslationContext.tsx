@@ -48,10 +48,12 @@ export const TranslationProvider = ({ children }: { children: React.ReactNode })
     // Fetch translations when language changes
     useEffect(() => {
         setLoading(true);
-        axios.get(getApiUrl(`api-translations.php?lang=${language}`))
+        axios.get(`/api/v3/api-labels.php?lang=${language}`)
             .then(res => {
-                if (res.data && res.data.success) {
-                    setTranslations(res.data.translations);
+                if (res.data) {
+                    // api-labels.php might return the JSON directly or wrapped in {success: true, translations: ...}
+                    // Based on our v3/api-labels.php, it's returning the JSON directly.
+                    setTranslations(res.data.translations || res.data);
                 }
             })
             .catch(err => console.error("Translation Error", err))
@@ -67,7 +69,25 @@ export const TranslationProvider = ({ children }: { children: React.ReactNode })
     };
 
     const t = useCallback((key: string): string => {
-        return translations[key] || key;
+        if (!key) return '';
+        
+        // Try flat first
+        if (translations[key] && typeof translations[key] === 'string') {
+            return translations[key];
+        }
+
+        // Try nested (e.g. "common.save")
+        const parts = key.split('.');
+        let current: any = translations;
+        for (const part of parts) {
+            if (current && typeof current === 'object' && part in current) {
+                current = current[part];
+            } else {
+                return key;
+            }
+        }
+
+        return typeof current === 'string' ? current : key;
     }, [translations]);
 
     const value = useMemo(() => ({ t, language, setLanguage, loading }), [t, language, loading]);

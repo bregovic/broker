@@ -58,13 +58,11 @@ const router = createBrowserRouter([
 
 function App() {
   return (
-    <FluentProvider theme={webLightTheme}>
-      <AuthProvider>
-        <SettingsProvider>
-          <RouterProvider router={router} />
-        </SettingsProvider>
-      </AuthProvider>
-    </FluentProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <RouterProvider router={router} />
+      </SettingsProvider>
+    </AuthProvider>
   );
 }
 
