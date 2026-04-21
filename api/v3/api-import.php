@@ -39,6 +39,9 @@ try {
     if ($action === 'analyze') {
         $tempFileParam = $_GET['temp_file'] ?? $_POST['temp_file'] ?? null;
         $ruleIdParam = $_GET['rule_id'] ?? $_POST['rule_id'] ?? null;
+        
+        // Fix for empty string being passed as UUID
+        if ($tempFileParam === '') $tempFileParam = null;
 
         // AUTO-CREATE staging table
         $db->exec("CREATE TABLE IF NOT EXISTS import_staging (

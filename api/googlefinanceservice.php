@@ -205,7 +205,7 @@ class GoogleFinanceService
     {
         if ($this->ttlSeconds === 0) {
             $sql = "
-                SELECT id          AS ticker,
+                SELECT ticker,
                        current_price,
                        change_percent,
                        company_name,
@@ -213,17 +213,17 @@ class GoogleFinanceService
                        currency,
                        last_fetched
                 FROM live_quotes
-                WHERE id = :ticker
+                WHERE ticker = :ticker
                   AND status = 'active'
                   AND current_price IS NOT NULL
-                  AND DATE(last_fetched) = CURRENT_DATE()
+                  AND DATE(last_fetched) = CURRENT_DATE
                 ORDER BY last_fetched DESC
                 LIMIT 1
             ";
             $stmt = $this->pdo->prepare($sql);
         } else {
             $sql = "
-                SELECT id          AS ticker,
+                SELECT ticker,
                        current_price,
                        change_percent,
                        company_name,
@@ -231,7 +231,7 @@ class GoogleFinanceService
                        currency,
                        last_fetched
                 FROM live_quotes
-                WHERE id = :ticker
+                WHERE ticker = :ticker
                   AND status = 'active'
                   AND current_price IS NOT NULL
                   AND last_fetched >= (NOW() - INTERVAL :ttl SECOND)
@@ -264,11 +264,12 @@ class GoogleFinanceService
     /**
      * Uloží/aktualizuje záznam v live_quotes.
      */
-    public function saveQuote($id, $data) {
-        // Explicitně zkontrolujeme existenci, abychom se vyhnuli problémům s duplicitami
-        // pokud id není Primary Key (což by mělo být opraveno rebuildem, ale jistota je jistota)
-        $stmtCheck = $this->pdo->prepare("SELECT COUNT(*) FROM live_quotes WHERE id = ?");
-        $stmtCheck->execute([$id]);
+    public function saveQuote($tickerId, $data) {
+        $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        
+        // Explicitně zkontrolujeme existenci
+        $stmtCheck = $this->pdo->prepare("SELECT COUNT(*) FROM live_quotes WHERE ticker = ?");
+        $stmtCheck->execute([$tickerId]);
         $exists = $stmtCheck->fetchColumn() > 0;
         
         // Zpracování hodnot
@@ -316,22 +317,17 @@ class GoogleFinanceService
                     exchange = ?,
                     company_name = ?,
                     source = ?
-                    WHERE id = ?";
+                    WHERE ticker = ?";
         } else {
             // INSERT
-            // Tady přidáme id na začátek params pro insert
-            array_unshift($params, $id); // params: [id, price, change_am, ...]
-            array_pop($params); // id už tam bylo na konci pro update, vyhodíme ho
-            // Oprava parametrů pro INSERT: [id, source, last_fetched, curr, prev, ...]
-            
             $source = $data['source'] ?? 'google_scrape';
             
             $sql = "INSERT INTO live_quotes 
-                    (id, source, last_fetched, current_price, change_amount, change_percent, currency, exchange, company_name, status)
+                    (ticker, source, last_fetched, current_price, change_amount, change_percent, currency, exchange, company_name, status)
                     VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, 'active')";
                     
             $params = [
-                $id,
+                $tickerId,
                 $source,
                 $currentPrice,
                 $changeAmount,
@@ -345,22 +341,26 @@ class GoogleFinanceService
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
 
-        // Also save to History as a snapshot (User Request)
-        // This ensures today's live price is recorded in history immediately.
-        // It will be refined by Yahoo history fetch later if valid.
+        // Also save to History
         if ($currentPrice !== null && $currentPrice > 0) {
-            $sqlHist = "INSERT INTO tickers_history (ticker, date, price, source) 
-                        VALUES (?, CURDATE(), ?, 'google_live') 
-                        ON DUPLICATE KEY UPDATE price=VALUES(price), source=VALUES(source)";
+            if ($driver === 'pgsql') {
+                $sqlHist = "INSERT INTO tickers_history (ticker, history_date, price, source) 
+                            VALUES (?, CURRENT_DATE, ?, 'google_live') 
+                            ON CONFLICT (ticker, history_date) DO UPDATE SET price=EXCLUDED.price, source=EXCLUDED.source";
+            } else {
+                $sqlHist = "INSERT INTO tickers_history (ticker, history_date, price, source) 
+                            VALUES (?, CURDATE(), ?, 'google_live') 
+                            ON DUPLICATE KEY UPDATE price=VALUES(price), source=VALUES(source)";
+            }
             $stmtH = $this->pdo->prepare($sqlHist);
-            $stmtH->execute([$id, $currentPrice]);
+            $stmtH->execute([$tickerId, $currentPrice]);
         }
         
-        // Update ticker_mapping and detect aliases based on company_name
+        // Update ticker_mapping
         $companyName = $data['company_name'] ?? null;
         $currency = $data['currency'] ?? null;
         if ($companyName) {
-            $this->updateTickerMappingAndDetectAlias($id, $companyName, $currency);
+            $this->updateTickerMappingAndDetectAlias($tickerId, $companyName, $currency);
         }
     }
 
@@ -419,13 +419,23 @@ class GoogleFinanceService
             }
             
             // Insert or update ticker_mapping
-            $sql = "INSERT INTO ticker_mapping (ticker, company_name, currency, alias_of, status, last_verified)
-                    VALUES (?, ?, ?, ?, 'verified', NOW())
-                    ON DUPLICATE KEY UPDATE 
-                        company_name = COALESCE(NULLIF(VALUES(company_name), ''), company_name),
-                        currency = COALESCE(NULLIF(VALUES(currency), ''), currency),
-                        alias_of = COALESCE(alias_of, VALUES(alias_of)),
-                        last_verified = NOW()";
+            if ($driver === 'pgsql') {
+                $sql = "INSERT INTO ticker_mapping (ticker, company_name, currency, alias_of, status, last_verified)
+                        VALUES (?, ?, ?, ?, 'verified', NOW())
+                        ON CONFLICT (ticker) DO UPDATE SET 
+                            company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ticker_mapping.company_name),
+                            currency = COALESCE(NULLIF(EXCLUDED.currency, ''), ticker_mapping.currency),
+                            alias_of = COALESCE(ticker_mapping.alias_of, EXCLUDED.alias_of),
+                            last_verified = NOW()";
+            } else {
+                $sql = "INSERT INTO ticker_mapping (ticker, company_name, currency, alias_of, status, last_verified)
+                        VALUES (?, ?, ?, ?, 'verified', NOW())
+                        ON DUPLICATE KEY UPDATE 
+                            company_name = COALESCE(NULLIF(VALUES(company_name), ''), company_name),
+                            currency = COALESCE(NULLIF(VALUES(currency), ''), currency),
+                            alias_of = COALESCE(alias_of, VALUES(alias_of)),
+                            last_verified = NOW()";
+            }
             
             $this->pdo->prepare($sql)->execute([$ticker, $companyName, $currency, $aliasOf]);
             

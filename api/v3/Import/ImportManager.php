@@ -16,7 +16,7 @@ class ImportManager {
     /**
      * Analyzes a file and returns metadata + potential transactions without saving.
      */
-    public function analyzeFile(string $filePath, string $originalName = ''): array {
+    public function analyzeFile(string $filePath, string $originalName = '', ?int $ruleId = null): array {
         if (!file_exists($filePath)) {
             throw new \Exception("Soubor nebyl nalezen.");
         }
@@ -24,8 +24,17 @@ class ImportManager {
         $filename = $originalName ?: basename($filePath);
         $content = $this->extractContent($filePath, $filename);
         
-        // 1. DISCOVERY
-        $rule = $this->discoverRule($filename, $content);
+        // 1. DISCOVERY / MANUAL RULE
+        $rule = null;
+        if ($ruleId) {
+            $stmt = $this->pdo->prepare("SELECT * FROM broker_import_rules WHERE id = ?");
+            $stmt->execute([$ruleId]);
+            $rule = $stmt->fetch(\PDO::FETCH_ASSOC);
+        }
+
+        if (!$rule) {
+            $rule = $this->discoverRule($filename, $content);
+        }
         
         // 2. PARSING (Dry Run)
         $transactions = [];
