@@ -29,8 +29,15 @@ class RevolutTradingPdfParser extends AbstractParser {
     public function parse(string $content): array {
         $transactions = [];
         
-        // Clean and Normalize like the JS version
+        // Clean and Normalize like the robust JS version
         $cleanText = str_replace("\u{00A0}", ' ', $content);
+        $cleanText = str_replace('US$', 'USD ', $cleanText);
+        $cleanText = str_replace('€', 'EUR ', $cleanText);
+        
+        // Fix common missing spaces before Buy/Sell words
+        $cleanText = preg_replace('/([0-9])(?=Buy|Nákup)/ui', '$1 ', $cleanText);
+        $cleanText = preg_replace('/([0-9])(?=Sell|Prodej)/ui', '$1 ', $cleanText);
+        
         $cleanText = preg_replace('/\s{2,}/', ' ', $cleanText);
         
         // Split by Date (SUPER-ROBUST JS METHOD)
@@ -45,24 +52,34 @@ class RevolutTradingPdfParser extends AbstractParser {
             $date = $this->extractDate($chunk);
             if (!$date) continue;
 
-            // --- TRADE LOGIC (Ported from JS Regex) ---
-            // Pattern: Ticker Trade/Obchod - Market/Limit Qty Currency Price Side Currency Value ...
-            $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\s]+)\s+([A-Z]{3})\s*([0-9.,\s]+)\s+(Buy|Sell|Nákup|Prodej)\s+([A-Z]{3})\s*([0-9.,\s\-]+)\s+([A-Z]{3})\s*([0-9.,\s\-]+)/iu';
+            // --- TRADE LOGIC (Ported from JS Regex, looser) ---
+            // Pattern: Ticker Trade/Obchod - Market/Limit Qty Currency Price Side ...
+            // We focus on the core parts: Ticker, Trade/Obchod, Qty, Price, Side, Total
+            $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\s]+)\s+([A-Z]{3})\s*([0-9.,\s]+)\s+(Buy|Sell|Nákup|Prodej)/iu';
             
             if (preg_match($tradeRegex, $chunk, $matches)) {
                 $ticker = $matches[1];
                 $qty = $this->parseNumber($matches[2]);
                 $price = $this->parseNumber($matches[4]);
                 $side = $matches[5];
-                $total = $this->parseNumber($matches[7]);
-                $currency = $matches[8]; // Resulting currency
                 
-                $transactions[] = $this->createTransaction($date, $ticker, $side, $qty, $total, $currency, $chunk);
+                // Try to find the total value which usually follows the Side
+                $value = 0;
+                $currency = $matches[3];
+                // Regex for the value part after Side: Currency 123.45
+                if (preg_match('/(?:Buy|Sell|Nákup|Prodej)\s+([A-Z]{3})\s*([0-9.,\s\-]+)/iu', $chunk, $vMatches)) {
+                    $currency = $vMatches[1];
+                    $value = $this->parseNumber($vMatches[2]);
+                } else {
+                    $value = $qty * $price;
+                }
+                
+                $transactions[] = $this->createTransaction($date, $ticker, $side, $qty, $value, $currency, $chunk);
                 continue;
             }
 
-            // --- DIVIDEND LOGIC ---
-            $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+(USD|EUR|GBP|CZK)\s*([0-9.,\s]+)/iu';
+            // --- DIVIDEND LOGIC (Looser) ---
+            $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+([A-Z]{3})\s*([0-9.,\s]+)/iu';
             if (preg_match($divRegex, $chunk, $matches)) {
                 $transactions[] = $this->createTransaction($date, $matches[1], 'DIVIDEND', 1, $this->parseNumber($matches[3]), $matches[2], $chunk);
             }
