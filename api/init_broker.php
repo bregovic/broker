@@ -9,7 +9,8 @@ require_once __DIR__ . '/config.php';
 
 try {
     $pdo = get_pdo();
-    echo "CONNECTED TO: " . $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) . "\n\n";
+    echo "CONNECTED TO: " . $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) . "\n";
+    echo "VERSION: 1.0.4\n\n";
 
     // 1. REFRESH IMPORT RULES (Drop and recreate since it's a seed table)
     $pdo->exec("DROP TABLE IF EXISTS broker_import_rules CASCADE");
