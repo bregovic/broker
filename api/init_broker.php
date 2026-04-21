@@ -49,11 +49,58 @@ try {
         }
     }
 
+    // 3. LIVE QUOTES SCHEMA
+    $pdo->exec("CREATE TABLE IF NOT EXISTS live_quotes (
+        ticker VARCHAR(20) PRIMARY KEY,
+        current_price DECIMAL(18, 8),
+        change_amount DECIMAL(18, 8),
+        change_percent DECIMAL(18, 8),
+        currency VARCHAR(10),
+        exchange VARCHAR(50),
+        company_name VARCHAR(255),
+        asset_type VARCHAR(20),
+        source VARCHAR(50),
+        all_time_high DECIMAL(18, 8),
+        high_52w DECIMAL(18, 8),
+        all_time_low DECIMAL(18, 8),
+        low_52w DECIMAL(18, 8),
+        ema_212 DECIMAL(18, 8),
+        resilience_score DECIMAL(18, 8),
+        last_fetched TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(20) DEFAULT 'active'
+    )");
+    
+    // Safety: ensure 'source' exists if table was pre-existing
+    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN source VARCHAR(50)"); } catch(Exception $e){}
+    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN asset_type VARCHAR(20)"); } catch(Exception $e){}
+    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN all_time_high DECIMAL(18, 8)"); } catch(Exception $e){}
+    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN resilience_score DECIMAL(18, 8)"); } catch(Exception $e){}
+
+    // 4. TICKERS HISTORY SCHEMA
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tickers_history (
+        ticker VARCHAR(20),
+        history_date DATE,
+        price DECIMAL(18, 8),
+        source VARCHAR(50),
+        PRIMARY KEY (ticker, history_date)
+    )");
+
+    // 5. TICKER MAPPING SCHEMA
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ticker_mapping (
+        ticker VARCHAR(20) PRIMARY KEY,
+        company_name VARCHAR(255),
+        isin VARCHAR(20),
+        currency VARCHAR(10),
+        alias_of VARCHAR(20),
+        status VARCHAR(20) DEFAULT 'unverified',
+        last_verified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )");
+
     try {
         $pdo->exec("ALTER TABLE broker_import_rules ADD CONSTRAINT unique_config_name UNIQUE (config_name)");
     } catch (Exception $e) { /* ignore if already exists */ }
 
-    // 3. SEEDING RULES
+    // 6. SEEDING RULES
     $rules = [
         ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|trading-account-statement|account-statement', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
         ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny'],
