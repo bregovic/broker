@@ -9,12 +9,14 @@ require_once __DIR__ . '/config.php';
 
 try {
     $pdo = get_pdo();
-    echo "CONNECTED TO: " . $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) . "\n";
-    echo "VERSION: 1.0.4\n\n";
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    
+    echo "CONNECTED TO: $driver\n";
+    echo "VERSION: 1.0.5 (Direct patch)\n\n";
 
-    // 1. REFRESH IMPORT RULES (Drop and recreate since it's a seed table)
-    $pdo->exec("DROP TABLE IF EXISTS broker_import_rules CASCADE");
-    $pdo->exec("CREATE TABLE broker_import_rules (
+    // 1. Core Tables
+    $pdo->exec("CREATE TABLE IF NOT EXISTS broker_import_rules (
         id SERIAL PRIMARY KEY,
         config_name VARCHAR(100) UNIQUE NOT NULL,
         broker_name VARCHAR(100),
@@ -22,62 +24,40 @@ try {
         file_pattern TEXT,
         content_regex TEXT
     )");
-    echo "REFRESHED: broker_import_rules\n";
 
-    // 2. MODERN TRANSACTIONS SCHEMA (Add columns one-by-one safely)
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (trans_id SERIAL PRIMARY KEY)");
     
-    $cols = [
-        'ticker' => 'VARCHAR(20)',
-        'transaction_date' => 'DATE',
-        'type' => 'VARCHAR(20)',
-        'quantity' => 'DECIMAL(18, 8)',
-        'price_per_unit' => 'DECIMAL(18, 8)',
+    // 2. Safely add columns to live_quotes
+    $pdo->exec("CREATE TABLE IF NOT EXISTS live_quotes (ticker VARCHAR(20) PRIMARY KEY)");
+    
+    $liveQuotesCols = [
+        'price' => 'DECIMAL(18, 8)',    // Aligned with api-market-data.php
+        'current_price' => 'DECIMAL(18, 8)', // Heritage
+        'change_amount' => 'DECIMAL(18, 8)',
+        'change_percent' => 'DECIMAL(18, 8)',
         'currency' => 'VARCHAR(10)',
-        'fee' => 'DECIMAL(18, 8)',
-        'total_amount' => 'DECIMAL(18, 8)',
-        'source_broker' => 'VARCHAR(50)',
-        'broker_trade_id' => 'VARCHAR(100)',
-        'metadata' => 'JSONB'
+        'exchange' => 'VARCHAR(50)',
+        'company_name' => 'VARCHAR(255)',
+        'asset_type' => 'VARCHAR(20)',
+        'source' => 'VARCHAR(50)',
+        'all_time_high' => 'DECIMAL(18, 8)',
+        'high_52w' => 'DECIMAL(18, 8)',
+        'all_time_low' => 'DECIMAL(18, 8)',
+        'low_52w' => 'DECIMAL(18, 8)',
+        'ema_212' => 'DECIMAL(18, 8)',
+        'resilience_score' => 'DECIMAL(18, 8)',
+        'last_fetched' => 'TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP',
+        'status' => 'VARCHAR(20) DEFAULT \'active\''
     ];
 
-    foreach ($cols as $col => $def) {
+    foreach ($liveQuotesCols as $col => $def) {
         try {
-            $pdo->exec("ALTER TABLE transactions ADD COLUMN $col $def");
-            echo "ADDED COLUMN: $col to transactions\n";
-        } catch (Exception $e) {
-            // Probably already exists
-        }
+            $pdo->exec("ALTER TABLE live_quotes ADD COLUMN $col $def");
+            echo "FIXED: Column '$col' added to live_quotes.\n";
+        } catch (Exception $e) { /* already exists */ }
     }
 
-    // 3. LIVE QUOTES SCHEMA
-    $pdo->exec("CREATE TABLE IF NOT EXISTS live_quotes (
-        ticker VARCHAR(20) PRIMARY KEY,
-        current_price DECIMAL(18, 8),
-        change_amount DECIMAL(18, 8),
-        change_percent DECIMAL(18, 8),
-        currency VARCHAR(10),
-        exchange VARCHAR(50),
-        company_name VARCHAR(255),
-        asset_type VARCHAR(20),
-        source VARCHAR(50),
-        all_time_high DECIMAL(18, 8),
-        high_52w DECIMAL(18, 8),
-        all_time_low DECIMAL(18, 8),
-        low_52w DECIMAL(18, 8),
-        ema_212 DECIMAL(18, 8),
-        resilience_score DECIMAL(18, 8),
-        last_fetched TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        status VARCHAR(20) DEFAULT 'active'
-    )");
-    
-    // Safety: ensure 'source' exists if table was pre-existing
-    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN source VARCHAR(50)"); } catch(Exception $e){}
-    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN asset_type VARCHAR(20)"); } catch(Exception $e){}
-    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN all_time_high DECIMAL(18, 8)"); } catch(Exception $e){}
-    try { $pdo->exec("ALTER TABLE live_quotes ADD COLUMN resilience_score DECIMAL(18, 8)"); } catch(Exception $e){}
-
-    // 4. TICKERS HISTORY SCHEMA
+    // 3. Tickers History
     $pdo->exec("CREATE TABLE IF NOT EXISTS tickers_history (
         ticker VARCHAR(20),
         history_date DATE,
@@ -86,22 +66,7 @@ try {
         PRIMARY KEY (ticker, history_date)
     )");
 
-    // 5. TICKER MAPPING SCHEMA
-    $pdo->exec("CREATE TABLE IF NOT EXISTS ticker_mapping (
-        ticker VARCHAR(20) PRIMARY KEY,
-        company_name VARCHAR(255),
-        isin VARCHAR(20),
-        currency VARCHAR(10),
-        alias_of VARCHAR(20),
-        status VARCHAR(20) DEFAULT 'unverified',
-        last_verified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    try {
-        $pdo->exec("ALTER TABLE broker_import_rules ADD CONSTRAINT unique_config_name UNIQUE (config_name)");
-    } catch (Exception $e) { /* ignore if already exists */ }
-
-    // 6. SEEDING RULES
+    // 4. Seeding Rules
     $rules = [
         ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|trading-account-statement|account-statement', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
         ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny'],
@@ -117,12 +82,11 @@ try {
                            content_regex = EXCLUDED.content_regex");
     foreach ($rules as $rule) {
         $stmt->execute($rule);
-        echo "SEEDED/UPDATED RULE: {$rule[1]}\n";
     }
 
-    echo "\nALL DONE! SYSTEM IS CLEAN AND READY.";
+    echo "ALL SCHEMAS VERIFIED AND UPDATED.";
 
 } catch (Throwable $e) {
     http_response_code(500);
-    echo "\nFATAL ERROR: " . $e->getMessage() . "\n" . $e->getTraceAsString();
+    echo "FATAL ERROR: " . $e->getMessage();
 }
