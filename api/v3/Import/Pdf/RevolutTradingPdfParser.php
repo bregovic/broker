@@ -44,6 +44,7 @@ class RevolutTradingPdfParser extends AbstractParser {
         // Matches: DD MMM YYYY | DD. MM. YYYY | DD MMM YYYY HH:MM:SS GMT
         $splitRegex = '/\s(?=(?:\d{1,2}\s[\w\x{00C0}-\x{024F}]{2,}\s\d{4}\s\d{2}:\d{2}:\d{2}\sGMT)|(?:\d{1,2}\s[\w\x{00C0}-\x{024F}]{2,}\s\d{4})|(?:\d{1,2}\.\s*\d{1,2}\.\s*\d{4}))/u';
         $chunks = preg_split($splitRegex, $cleanText);
+        $chunkCount = count($chunks);
 
         foreach ($chunks as $chunk) {
             $chunk = trim($chunk);
@@ -53,8 +54,6 @@ class RevolutTradingPdfParser extends AbstractParser {
             if (!$date) continue;
 
             // --- TRADE LOGIC (Ported from JS Regex, looser) ---
-            // Pattern: Ticker Trade/Obchod - Market/Limit Qty Currency Price Side ...
-            // We focus on the core parts: Ticker, Trade/Obchod, Qty, Price, Side, Total
             $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\s]+)\s+([A-Z]{3})\s*([0-9.,\s]+)\s+(Buy|Sell|Nákup|Prodej)/iu';
             
             if (preg_match($tradeRegex, $chunk, $matches)) {
@@ -63,10 +62,8 @@ class RevolutTradingPdfParser extends AbstractParser {
                 $price = $this->parseNumber($matches[4]);
                 $side = $matches[5];
                 
-                // Try to find the total value which usually follows the Side
                 $value = 0;
                 $currency = $matches[3];
-                // Regex for the value part after Side: Currency 123.45
                 if (preg_match('/(?:Buy|Sell|Nákup|Prodej)\s+([A-Z]{3})\s*([0-9.,\s\-]+)/iu', $chunk, $vMatches)) {
                     $currency = $vMatches[1];
                     $value = $this->parseNumber($vMatches[2]);
@@ -74,14 +71,18 @@ class RevolutTradingPdfParser extends AbstractParser {
                     $value = $qty * $price;
                 }
                 
-                $transactions[] = $this->createTransaction($date, $ticker, $side, $qty, $value, $currency, $chunk);
+                $dto = $this->createTransaction($date, $ticker, $side, $qty, $value, $currency, $chunk);
+                $dto->metadata['debug_total_chunks'] = $chunkCount;
+                $transactions[] = $dto;
                 continue;
             }
 
             // --- DIVIDEND LOGIC (Looser) ---
             $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+([A-Z]{3})\s*([0-9.,\s]+)/iu';
             if (preg_match($divRegex, $chunk, $matches)) {
-                $transactions[] = $this->createTransaction($date, $matches[1], 'DIVIDEND', 1, $this->parseNumber($matches[3]), $matches[2], $chunk);
+                $dto = $this->createTransaction($date, $matches[1], 'DIVIDEND', 1, $this->parseNumber($matches[3]), $matches[2], $chunk);
+                $dto->metadata['debug_total_chunks'] = $chunkCount;
+                $transactions[] = $dto;
             }
         }
 
