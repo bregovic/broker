@@ -5,6 +5,41 @@ use Broker\V3\Import\ImportManager;
 use Broker\V3\Import\TransactionDTO;
 use Throwable;
 
+// Start session for authentication
+session_start();
+
+function resolveUserId() {
+    $candidates = ['user_id','uid','userid','id'];
+    foreach ($candidates as $k) {
+        if (isset($_SESSION[$k]) && is_numeric($_SESSION[$k]) && (int)$_SESSION[$k] > 0) return (int)$_SESSION[$k];
+    }
+    if (isset($_SESSION['user'])) {
+        $u = $_SESSION['user'];
+        if (is_array($u)) { foreach ($candidates as $k) if (isset($u[$k]) && is_numeric($u[$k])) return (int)$u[$k]; }
+        elseif (is_object($u)) { foreach ($candidates as $k) if (isset($u->$k) && is_numeric($u->$k)) return (int)$u->$k; }
+    }
+    return 0;
+}
+
+function resolveRate($pdo, string $date, string $currency) {
+    if ($currency === 'CZK') return 1.0;
+    try {
+        $stmt = $pdo->prepare("SELECT rate FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1");
+        $stmt->execute([$currency, $date]);
+        $val = $stmt->fetchColumn();
+        if ($val !== false) return (float)$val;
+    } catch (\Exception $e) {}
+    
+    try {
+        $stmt = $pdo->prepare("SELECT rate FROM fx_rates WHERE currency_from=? AND currency_to='CZK' AND rate_date<=? ORDER BY rate_date DESC LIMIT 1");
+        $stmt->execute([$currency, $date]);
+        $val = $stmt->fetchColumn();
+        if ($val !== false) return (float)$val;
+    } catch (\Exception $e) {}
+    
+    return 1.0;
+}
+
 // Error reporting only for debugging phase
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -28,6 +63,13 @@ try {
     $db = DB::connect();
     $manager = new ImportManager($db);
     $action = $_GET['action'] ?? 'process'; 
+
+    $userId = resolveUserId();
+    if ($action !== 'list_rules' && !$userId) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Uživatel není přihlášen. Přihlaste se prosím znovu.']);
+        exit;
+    }
 
     // 0. LIST RULES (For dropdowns)
     if ($action === 'list_rules') {
@@ -186,21 +228,77 @@ try {
 
                 $inserted = 0;
                 $skipped = 0;
-                foreach ($transactions as $t) {
+                 foreach ($transactions as $t) {
                     $data = $t->toArray();
+                    
+                    // Resolve FX/ex_rate and amount_czk
+                    $exRate = resolveRate($db, $data['transaction_date'], $data['currency']);
+                    $amountCzk = round($data['total_amount'] * $exRate, 2);
+                    
+                    // Guess product type
+                    $productType = (strcasecmp($data['currency'] ?? '', 'USD') === 0 || strcasecmp($data['currency'] ?? '', 'EUR') === 0 || strcasecmp($data['currency'] ?? '', 'GBP') === 0 || strcasecmp($data['currency'] ?? '', 'CZK') === 0) ? 'Stock' : 'Crypto';
+                    if (strpos(strtolower($result['parser'] ?? ''), 'crypto') !== false) {
+                        $productType = 'Crypto';
+                    }
+                    
+                    // SELL normalizes amounts to positive in trans_type Sell
+                    $amountCur = (float)$data['total_amount'];
+                    $qty = (float)$data['quantity'];
+                    $price = (float)$data['price_per_unit'];
+                    if (strcasecmp($data['type'], 'Sell') === 0) {
+                        $amountCur = abs($amountCur);
+                        $qty = abs($qty);
+                        $price = abs($price);
+                    }
+                    
                     $sql = "INSERT INTO transactions 
-                            (ticker, transaction_date, type, quantity, price_per_unit, currency, fee, total_amount, source_broker, broker_trade_id, metadata)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (
+                                user_id, date, id, amount, price, ex_rate, amount_cur, currency, amount_czk, platform, product_type, trans_type, fees, notes, fingerprint,
+                                ticker, transaction_date, type, quantity, price_per_unit, fee, total_amount, source_broker, broker_trade_id, metadata
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT (broker_trade_id) DO NOTHING";
                     
                     $stmtIns = $db->prepare($sql);
                     $stmtIns->execute([
-                        $data['ticker'], $data['transaction_date'], $data['type'], $data['quantity'],
-                        $data['price_per_unit'], $data['currency'], $data['fee'], $data['total_amount'],
-                        $data['source_broker'], $data['broker_trade_id'], $data['metadata']
+                        // Legacy columns
+                        $userId,
+                        $data['transaction_date'],
+                        $data['ticker'],
+                        $qty,
+                        $price,
+                        $exRate,
+                        $amountCur,
+                        $data['currency'],
+                        $amountCzk,
+                        $data['source_broker'],
+                        $productType,
+                        $data['type'],
+                        $data['fee'] ?? 0.0,
+                        'import: ' . $data['source_broker'],
+                        $data['broker_trade_id'],
+                        
+                        // New columns
+                        $data['ticker'],
+                        $data['transaction_date'],
+                        $data['type'],
+                        $data['quantity'],
+                        $data['price_per_unit'],
+                        $data['fee'],
+                        $data['total_amount'],
+                        $data['source_broker'],
+                        $data['broker_trade_id'],
+                        json_encode($data['metadata'])
                     ]);
                     
-                    if ($stmtIns->rowCount() > 0) $inserted++;
+                    if ($stmtIns->rowCount() > 0) {
+                        $inserted++;
+                        // Auto-add to watchlist in Postgres
+                        try {
+                            $db->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?) ON CONFLICT DO NOTHING")
+                               ->execute([$userId, $data['ticker']]);
+                        } catch (\Exception $e) {}
+                    }
                     else $skipped++;
                 }
 
