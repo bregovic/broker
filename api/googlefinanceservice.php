@@ -295,21 +295,11 @@ class GoogleFinanceService
             // Ignore - might be a new ticker without transactions
         }
         
-        $params = [
-            $currentPrice,
-            $changeAmount,
-            $changePercent,
-            $finalCurrency,
-            $data['exchange'] ?? null,
-            $data['company_name'] ?? null,
-            $data['source'] ?? 'google_scrape',
-            $tickerId
-        ];
-        
         if ($exists) {
             // UPDATE
             $sql = "UPDATE live_quotes SET 
                     last_fetched = NOW(),
+                    price = ?,
                     current_price = ?,
                     change_amount = ?,
                     change_percent = ?,
@@ -318,17 +308,29 @@ class GoogleFinanceService
                     company_name = ?,
                     source = ?
                     WHERE ticker = ?";
+            $params = [
+                $currentPrice,
+                $currentPrice,
+                $changeAmount,
+                $changePercent,
+                $finalCurrency,
+                $data['exchange'] ?? null,
+                $data['company_name'] ?? null,
+                $data['source'] ?? 'google_scrape',
+                $tickerId
+            ];
         } else {
             // INSERT
             $source = $data['source'] ?? 'google_scrape';
             
             $sql = "INSERT INTO live_quotes 
-                    (ticker, source, last_fetched, current_price, change_amount, change_percent, currency, exchange, company_name, status)
-                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, 'active')";
+                    (ticker, source, last_fetched, price, current_price, change_amount, change_percent, currency, exchange, company_name, status)
+                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, 'active')";
                     
             $params = [
                 $tickerId,
                 $source,
+                $currentPrice,
                 $currentPrice,
                 $changeAmount,
                 $changePercent,

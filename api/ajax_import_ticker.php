@@ -88,23 +88,26 @@ try {
 
             // Save to live_quotes too so it appears in market overview immediately
             if ($driver === 'pgsql') {
-                $sqlLive = "INSERT INTO live_quotes (ticker, price, change_percent, currency, last_fetched, exchange)
-                            VALUES (?, ?, ?, ?, NOW(), ?)
+                $sqlLive = "INSERT INTO live_quotes (ticker, price, current_price, change_percent, currency, last_fetched, exchange)
+                            VALUES (?, ?, ?, ?, ?, NOW(), ?)
                             ON CONFLICT (ticker) DO UPDATE SET
                                 price = EXCLUDED.price,
+                                current_price = EXCLUDED.current_price,
                                 change_percent = EXCLUDED.change_percent,
                                 last_fetched = NOW()";
             } else {
-                $sqlLive = "INSERT INTO live_quotes (ticker, price, change_percent, currency, last_fetched, exchange)
-                            VALUES (?, ?, ?, ?, NOW(), ?)
+                $sqlLive = "INSERT INTO live_quotes (ticker, price, current_price, change_percent, currency, last_fetched, exchange)
+                            VALUES (?, ?, ?, ?, ?, NOW(), ?)
                             ON DUPLICATE KEY UPDATE
                                 price = VALUES(price),
+                                current_price = VALUES(current_price),
                                 change_percent = VALUES(change_percent),
                                 last_fetched = NOW()";
             }
             $stmtLive = $pdo->prepare($sqlLive);
             $stmtLive->execute([
                 $ticker, 
+                $data['current_price'], 
                 $data['current_price'], 
                 $data['change_percent'] ?? 0, 
                 $currency,

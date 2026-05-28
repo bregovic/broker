@@ -11,21 +11,8 @@ require_once __DIR__ . '/googlefinanceservice.php';
 
 try {
     // 1. Config & DB
-    $envPaths = [
-        __DIR__ . '/env.local.php', __DIR__ . '/../env.local.php', 
-        $_SERVER['DOCUMENT_ROOT'] . '/env.local.php', __DIR__ . '/env.php'
-    ];
-    foreach ($envPaths as $p) { if(file_exists($p)) { require_once $p; break; } }
-    
-    if (!defined('DB_HOST')) {
-        if (file_exists(__DIR__ . '/db.php')) require_once __DIR__ . '/db.php';
-        elseif (file_exists(__DIR__ . '/php/db.php')) require_once __DIR__ . '/php/db.php';
-    }
-    
-    // DB Init
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+    require_once __DIR__ . '/config.php';
+    $pdo = get_pdo();
 
     // Init Services
     $googleService = new GoogleFinanceService($pdo);
@@ -103,6 +90,19 @@ try {
     function processTicker($pdo, $googleService, $ticker, $period) {
         $errorLog = [];
         $originalTicker = $ticker;
+        
+        $dateColumn = 'date';
+        try {
+            $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'pgsql') {
+                $dateColumn = 'history_date';
+            } else {
+                $stmtCol = $pdo->query("SHOW COLUMNS FROM tickers_history LIKE 'history_date'");
+                if ($stmtCol->fetch()) {
+                    $dateColumn = 'history_date';
+                }
+            }
+        } catch (Exception $e) {}
 
         // Resolve Alias
         try {
@@ -132,7 +132,7 @@ try {
             // Smart auto (default empty period)
             // Check last fetch
             try {
-                $lastDate = $pdo->query("SELECT MAX(date) FROM tickers_history WHERE ticker = '$ticker'")->fetchColumn();
+                $lastDate = $pdo->query("SELECT MAX($dateColumn) FROM tickers_history WHERE ticker = '$ticker'")->fetchColumn();
                 if ($lastDate) {
                     $start = strtotime($lastDate) - (7 * 86400); // 1 week overlap
                 } else {
@@ -219,7 +219,15 @@ try {
                  if ($ratio > 50 && $ratio < 150) $factor = 0.01; 
             }
 
-            $sqlH = "INSERT INTO tickers_history (ticker, date, price, source) VALUES (?, ?, ?, 'yahoo') ON DUPLICATE KEY UPDATE price=VALUES(price), source=VALUES(source)";
+            if ($driver === 'pgsql') {
+                $sqlH = "INSERT INTO tickers_history (ticker, history_date, price, source) 
+                         VALUES (?, ?, ?, 'yahoo') 
+                         ON CONFLICT (ticker, history_date) DO UPDATE SET price=EXCLUDED.price, source=EXCLUDED.source";
+            } else {
+                $sqlH = "INSERT INTO tickers_history (ticker, $dateColumn, price, source) 
+                         VALUES (?, ?, ?, 'yahoo') 
+                         ON DUPLICATE KEY UPDATE price=VALUES(price), source=VALUES(source)";
+            }
             $stmtH = $pdo->prepare($sqlH);
             
             $pdo->beginTransaction();
@@ -254,6 +262,7 @@ try {
                     // Update live_quotes
                     $sqlLQ = "UPDATE live_quotes SET 
                               current_price = :p, 
+                              price = :p,
                               change_amount = :ca,
                               change_percent = :cp,
                               last_fetched = NOW(),
@@ -299,7 +308,7 @@ try {
         // --- STATS CALC (EMA, ATH) ---
         // Fetch full history now (sorted)
         // Fetch full history now (sorted)
-        $stmtAll = $pdo->prepare("SELECT date, price FROM tickers_history WHERE ticker=? ORDER BY date ASC");
+        $stmtAll = $pdo->prepare("SELECT $dateColumn AS date, price FROM tickers_history WHERE ticker=? ORDER BY $dateColumn ASC");
         $stmtAll->execute([$originalTicker]); // Use original
         $rows = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
         

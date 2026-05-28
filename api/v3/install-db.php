@@ -98,6 +98,15 @@ try {
                 translation TEXT NOT NULL,
                 PRIMARY KEY (label_key, lang)
             );
+        ",
+
+        '007_watch' => "
+            CREATE TABLE IF NOT EXISTS watch (
+                user_id INT NOT NULL,
+                ticker VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, ticker)
+            );
         "
     ];
 

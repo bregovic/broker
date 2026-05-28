@@ -54,7 +54,7 @@ class RevolutTradingPdfParser extends AbstractParser {
             if (!$date) continue;
 
             // --- TRADE LOGIC (Ported from JS Regex, looser) ---
-            $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\s]+)\s+([A-Z]{3})\s*([0-9.,\s]+)\s+(Buy|Sell|Nákup|Prodej)/iu';
+            $tradeRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Trade|Obchod)\s+-\s+(?:Market|Limit|Tržní|Limitní)\s+([0-9.,\-]+)\s+([A-Z]{3})\s*([0-9.,\-]+)\s+(Buy|Sell|Nákup|Prodej)/iu';
             
             if (preg_match($tradeRegex, $chunk, $matches)) {
                 $ticker = $matches[1];
@@ -78,7 +78,7 @@ class RevolutTradingPdfParser extends AbstractParser {
             }
 
             // --- DIVIDEND LOGIC (Looser) ---
-            $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+([A-Z]{3})\s*([0-9.,\s]+)/iu';
+            $divRegex = '/\b([A-Z0-9.]{1,10})\s+(?:Dividend|Dividenda)\s+([A-Z]{3})\s*([0-9.,\-]+)/iu';
             if (preg_match($divRegex, $chunk, $matches)) {
                 $dto = $this->createTransaction($date, $matches[1], 'DIVIDEND', 1, $this->parseNumber($matches[3]), $matches[2], $chunk);
                 $dto->metadata['debug_total_chunks'] = $chunkCount;

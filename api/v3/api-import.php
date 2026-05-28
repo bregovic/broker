@@ -23,12 +23,17 @@ function resolveUserId() {
 
 function resolveRate($pdo, string $date, string $currency) {
     if ($currency === 'CZK') return 1.0;
-    try {
-        $stmt = $pdo->prepare("SELECT rate FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1");
-        $stmt->execute([$currency, $date]);
-        $val = $stmt->fetchColumn();
-        if ($val !== false) return (float)$val;
-    } catch (\Exception $e) {}
+    
+    $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
+    
+    if ($driver !== 'pgsql') {
+        try {
+            $stmt = $pdo->prepare("SELECT rate FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1");
+            $stmt->execute([$currency, $date]);
+            $val = $stmt->fetchColumn();
+            if ($val !== false) return (float)$val;
+        } catch (\Exception $e) {}
+    }
     
     try {
         $stmt = $pdo->prepare("SELECT rate FROM fx_rates WHERE currency_from=? AND currency_to='CZK' AND rate_date<=? ORDER BY rate_date DESC LIMIT 1");
