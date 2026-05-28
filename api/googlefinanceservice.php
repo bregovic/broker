@@ -306,7 +306,12 @@ class GoogleFinanceService
                     currency = ?,
                     exchange = ?,
                     company_name = ?,
-                    source = ?
+                    source = ?,
+                    ex_dividend_date = ?,
+                    payout_ratio = ?,
+                    dividend_yield = ?,
+                    dividend_rate = ?,
+                    five_year_avg_yield = ?
                     WHERE ticker = ?";
             $params = [
                 $currentPrice,
@@ -317,6 +322,11 @@ class GoogleFinanceService
                 $data['exchange'] ?? null,
                 $data['company_name'] ?? null,
                 $data['source'] ?? 'google_scrape',
+                $data['ex_dividend_date'] ?? null,
+                isset($data['payout_ratio']) ? (float)$data['payout_ratio'] : null,
+                isset($data['dividend_yield']) ? (float)$data['dividend_yield'] : null,
+                isset($data['dividend_rate']) ? (float)$data['dividend_rate'] : null,
+                isset($data['five_year_avg_yield']) ? (float)$data['five_year_avg_yield'] : null,
                 $tickerId
             ];
         } else {
@@ -324,8 +334,9 @@ class GoogleFinanceService
             $source = $data['source'] ?? 'google_scrape';
             
             $sql = "INSERT INTO live_quotes 
-                    (ticker, source, last_fetched, price, current_price, change_amount, change_percent, currency, exchange, company_name, status)
-                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, 'active')";
+                    (ticker, source, last_fetched, price, current_price, change_amount, change_percent, currency, exchange, company_name, status,
+                     ex_dividend_date, payout_ratio, dividend_yield, dividend_rate, five_year_avg_yield)
+                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)";
                     
             $params = [
                 $tickerId,
@@ -336,7 +347,12 @@ class GoogleFinanceService
                 $changePercent,
                 $data['currency'] ?? 'USD',
                 $data['exchange'] ?? null,
-                $data['company_name'] ?? null
+                $data['company_name'] ?? null,
+                $data['ex_dividend_date'] ?? null,
+                isset($data['payout_ratio']) ? (float)$data['payout_ratio'] : null,
+                isset($data['dividend_yield']) ? (float)$data['dividend_yield'] : null,
+                isset($data['dividend_rate']) ? (float)$data['dividend_rate'] : null,
+                isset($data['five_year_avg_yield']) ? (float)$data['five_year_avg_yield'] : null
             ];
         }
 
@@ -725,6 +741,67 @@ class GoogleFinanceService
         return $this->fetchFromYahoo($ticker);
     }
 
+    private function fetchYahooQuoteWithCrumb(string $ticker): ?array
+    {
+        $cookieFile = tempnam(sys_get_temp_dir(), 'ycookie_');
+        
+        $headers = [
+            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language: en-US,en;q=0.5'
+        ];
+
+        // Step 1: Request Yahoo homepage to get cookies
+        $ch = curl_init('https://finance.yahoo.com');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_COOKIEJAR, $cookieFile);
+        curl_exec($ch);
+        curl_close($ch);
+
+        // Step 2: Request getcrumb
+        $ch = curl_init('https://query1.finance.yahoo.com/v1/test/getcrumb');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_COOKIEFILE, $cookieFile);
+        curl_setopt($ch, CURLOPT_COOKIEJAR, $cookieFile);
+        $crumb = curl_exec($ch);
+        curl_close($ch);
+
+        $crumb = trim($crumb);
+        if (!$crumb) {
+            @unlink($cookieFile);
+            return null;
+        }
+
+        // Step 3: Request quote
+        $url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" . urlencode($ticker) . "&crumb=" . urlencode($crumb);
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_COOKIEFILE, $cookieFile);
+        $json = curl_exec($ch);
+        curl_close($ch);
+
+        @unlink($cookieFile);
+
+        if ($json) {
+            $data = json_decode($json, true);
+            return $data['quoteResponse']['result'][0] ?? null;
+        }
+
+        return null;
+    }
+
     private function fetchFromYahoo(string $ticker): ?array
     {
         // Try raw ticker first (US stocks)
@@ -751,6 +828,43 @@ class GoogleFinanceService
         }
 
         foreach ($candidates as $yTicker) {
+            // First try fetching detailed quote using the cookie/crumb handshake
+            $quote = $this->fetchYahooQuoteWithCrumb($yTicker);
+            if ($quote !== null && isset($quote['regularMarketPrice'])) {
+                $price = (float)$quote['regularMarketPrice'];
+                $prev = (float)($quote['regularMarketPreviousClose'] ?? 0);
+                $changePct = 0;
+                if ($prev > 0) {
+                    $changePct = (($price - $prev) / $prev) * 100;
+                }
+
+                if ($price > 0) {
+                    $companyName = $quote['shortName'] ?? $quote['longName'] ?? $ticker;
+                    
+                    $exDividendDate = null;
+                    if (!empty($quote['exDividendDate'])) {
+                        $exDividendDate = date('Y-m-d', $quote['exDividendDate']);
+                    }
+
+                    return [
+                        'ticker'               => $ticker, // Keep original ID
+                        'current_price'        => $price,
+                        'change_percent'       => $changePct,
+                        'company_name'         => $companyName,
+                        'exchange'             => $quote['fullExchangeName'] ?? $quote['exchange'] ?? 'Yahoo',
+                        'currency'             => $quote['currency'] ?? 'USD',
+                        'source'               => 'yahoo_crumb',
+                        
+                        'ex_dividend_date'     => $exDividendDate,
+                        'payout_ratio'         => isset($quote['payoutRatio']) ? (float)$quote['payoutRatio'] : null,
+                        'dividend_yield'       => isset($quote['dividendYield']) ? (float)$quote['dividendYield'] : null,
+                        'dividend_rate'        => isset($quote['dividendRate']) ? (float)$quote['dividendRate'] : null,
+                        'five_year_avg_yield'  => isset($quote['fiveYearAvgDividendYield']) ? (float)$quote['fiveYearAvgDividendYield'] : null,
+                    ];
+                }
+            }
+
+            // Fallback to stable /v8/finance/chart if handshake fails
             try {
                 $url = "https://query1.finance.yahoo.com/v8/finance/chart/" . urlencode($yTicker) . "?interval=1d&range=1d";
                 $json = $this->fetchUrl($url);

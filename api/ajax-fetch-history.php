@@ -87,7 +87,7 @@ try {
     }
 
     // Main Processor
-    function processTicker($pdo, $googleService, $ticker, $period) {
+    function processTicker($pdo, $googleService, $ticker, $period, $force = false) {
         $errorLog = [];
         $originalTicker = $ticker;
         
@@ -144,42 +144,66 @@ try {
         // --- ATTEMPT 1: YAHOO FINANCE ---
         $yahooSuccess = false;
         $usedSource = 'yahoo';
-        
-        // Fetch JSON
-        $url = "https://query1.finance.yahoo.com/v8/finance/chart/" . urlencode($yahooTicker) . 
-               "?period1=$start&period2=$end&interval=1d&events=history&includeAdjustedClose=true";
-        
-        $json = fetchUrl($url);
-        
         $yahooData = null;
-        if ($json) {
-            $decoded = json_decode($json, true);
-            $res = $decoded['chart']['result'][0] ?? null;
-            // Validate: Must have timestamp array
-            if ($res && !empty($res['timestamp'])) {
-                $yahooSuccess = true;
-                $yahooData = $res;
+
+        // Shared Cache Check
+        $hasCache = false;
+        try {
+            $startTolDate = date('Y-m-d', strtotime('+5 days', $start));
+            $endTolDate = date('Y-m-d', strtotime('-3 days', $end));
+            
+            $stmtStart = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ? AND $dateColumn <= ?");
+            $stmtStart->execute([$ticker, $startTolDate]);
+            $hasStart = $stmtStart->fetchColumn() > 0;
+            
+            $stmtEnd = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ? AND $dateColumn >= ?");
+            $stmtEnd->execute([$ticker, $endTolDate]);
+            $hasEnd = $stmtEnd->fetchColumn() > 0;
+            
+            if ($hasStart && $hasEnd && !$force) {
+                $hasCache = true;
             }
-        }
-        
-        // Retry logic for Dot/Hyphen (e.g. BRK.B)
-        if (!$yahooSuccess && strpos($yahooTicker, '.') !== false) {
-             // Heuristic: If it's a class share (single letter suffix)
-             $suffix = substr(strrchr($yahooTicker, '.'), 1);
-             if (strlen($suffix) === 1) { 
-                 $alt = str_replace('.', '-', $yahooTicker);
-                 $urlAlt = "https://query1.finance.yahoo.com/v8/finance/chart/" . urlencode($alt) . 
-                           "?period1=$start&period2=$end&interval=1d&events=history&includeAdjustedClose=true";
-                 $jsonAlt = fetchUrl($urlAlt);
-                 if ($jsonAlt) {
-                     $dAlt = json_decode($jsonAlt, true);
-                     if (!empty($dAlt['chart']['result'][0]['timestamp'])) {
-                         $yahooSuccess = true;
-                         $yahooData = $dAlt['chart']['result'][0];
-                         $yahooTicker = $alt;
+        } catch (Exception $e) {}
+
+        if ($hasCache) {
+            $yahooSuccess = true;
+            $usedSource = 'cache';
+        } else {
+            // Fetch JSON
+            $url = "https://query1.finance.yahoo.com/v8/finance/chart/" . urlencode($yahooTicker) . 
+                   "?period1=$start&period2=$end&interval=1d&events=history&includeAdjustedClose=true";
+            
+            $json = fetchUrl($url);
+            
+            if ($json) {
+                $decoded = json_decode($json, true);
+                $res = $decoded['chart']['result'][0] ?? null;
+                // Validate: Must have timestamp array
+                if ($res && !empty($res['timestamp'])) {
+                    $yahooSuccess = true;
+                    $yahooData = $res;
+                }
+            }
+            
+            // Retry logic for Dot/Hyphen (e.g. BRK.B)
+            if (!$yahooSuccess && strpos($yahooTicker, '.') !== false) {
+                 // Heuristic: If it's a class share (single letter suffix)
+                 $suffix = substr(strrchr($yahooTicker, '.'), 1);
+                 if (strlen($suffix) === 1) { 
+                     $alt = str_replace('.', '-', $yahooTicker);
+                     $urlAlt = "https://query1.finance.yahoo.com/v8/finance/chart/" . urlencode($alt) . 
+                               "?period1=$start&period2=$end&interval=1d&events=history&includeAdjustedClose=true";
+                     $jsonAlt = fetchUrl($urlAlt);
+                     if ($jsonAlt) {
+                         $dAlt = json_decode($jsonAlt, true);
+                         if (!empty($dAlt['chart']['result'][0]['timestamp'])) {
+                             $yahooSuccess = true;
+                             $yahooData = $dAlt['chart']['result'][0];
+                             $yahooTicker = $alt;
+                         }
                      }
                  }
-             }
+            }
         }
 
         // --- ATTEMPT 2: GOOGLE FALLBACK ---
@@ -200,9 +224,10 @@ try {
             // We can try to calc stats if we have history in DB.
         } else {
             // --- YAHOO PROCESSING ---
-            // 1. Save History
-            $ts = $yahooData['timestamp'];
-            $c = $yahooData['indicators']['quote'][0]['close'];
+            if ($usedSource !== 'cache') {
+                // 1. Save History
+                $ts = $yahooData['timestamp'];
+                $c = $yahooData['indicators']['quote'][0]['close'];
             
             // GBp fix?
             $factor = 1.0;
@@ -301,7 +326,8 @@ try {
                          $sqlEx = "UPDATE live_quotes SET " . implode(', ', $updExtras) . " WHERE id = :id";
                          $pdo->prepare($sqlEx)->execute($extraParams);
                      }
-                }
+                 }
+             }
             }
         }
 
@@ -384,6 +410,7 @@ try {
     // Batch/Single Mode
     $ticker = $_GET['ticker'] ?? $_POST['ticker'] ?? ($input['ticker'] ?? '');
     $period = $_GET['period'] ?? $_POST['period'] ?? ($input['period'] ?? 'smart');
+    $force = isset($_GET['force']) || isset($_POST['force']) || !empty($input['force']);
     
     if ($ticker === 'ALL') {
          // Not supported here properly (timeout risk). Use Loop in frontend.
@@ -392,7 +419,7 @@ try {
     }
     
     if ($ticker) {
-        $res = processTicker($pdo, $googleService, $ticker, $period);
+        $res = processTicker($pdo, $googleService, $ticker, $period, $force);
         echo json_encode(array_merge(['success'=> true], $res));
     } else {
         echo json_encode(['success'=>false, 'message'=>'No ticker']);
