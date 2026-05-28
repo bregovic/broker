@@ -112,12 +112,6 @@ class RevolutTradingPdfParser extends AbstractParser {
         return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
 
-    private function parseNumber(string $str): float {
-        $clean = preg_replace('/\s+/', '', $str); // No spaces
-        $clean = str_replace(',', '.', $clean);
-        return (float)$clean;
-    }
-
     private function createTransaction($date, $ticker, $type, $qty, $total, $currency, $chunk): TransactionDTO {
         $dto = new TransactionDTO();
         $dto->date = $date;
