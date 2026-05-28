@@ -131,7 +131,9 @@ try {
                 if ($content === false) throw new \Exception("Nelze přečíst tmp soubor: " . $file['tmp_name']);
 
                 $stmt = $db->prepare("INSERT INTO import_staging (filename, file_content) VALUES (?, ?) RETURNING staging_id");
-                $stmt->execute([$file['name'], $content]);
+                $stmt->bindValue(1, $file['name'], \PDO::PARAM_STR);
+                $stmt->bindValue(2, $content, \PDO::PARAM_LOB);
+                $stmt->execute();
                 $stagingId = $stmt->fetchColumn();
 
                 $details = $manager->analyzeFile($file['tmp_name'], $file['name']);
@@ -164,6 +166,9 @@ try {
         
         try {
             foreach ($items as $item) {
+                if (empty($item['temp_file']) || strlen($item['temp_file']) !== 36) {
+                    continue;
+                }
                 // FETCH FROM POSTGRES STAGING
                 $stmt = $db->prepare("SELECT filename, file_content FROM import_staging WHERE staging_id = ?");
                 $stmt->execute([$item['temp_file']]);
