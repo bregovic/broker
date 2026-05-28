@@ -282,13 +282,13 @@ class GoogleFinanceService
         $finalCurrency = $fetchedCurrency;
         
         try {
-            $stmtTx = $this->pdo->prepare("SELECT currency FROM transactions WHERE id = ? LIMIT 1");
-            $stmtTx->execute([$id]);
+            $stmtTx = $this->pdo->prepare("SELECT currency FROM transactions WHERE ticker = ? LIMIT 1");
+            $stmtTx->execute([$tickerId]);
             $txCurrency = $stmtTx->fetchColumn();
             
             if ($txCurrency && $txCurrency !== $fetchedCurrency) {
                 // Transaction currency takes priority
-                error_log("Currency override for $id: fetched $fetchedCurrency, using transaction currency $txCurrency");
+                error_log("Currency override for $tickerId: fetched $fetchedCurrency, using transaction currency $txCurrency");
                 $finalCurrency = $txCurrency;
             }
         } catch (Exception $e) {
@@ -303,7 +303,7 @@ class GoogleFinanceService
             $data['exchange'] ?? null,
             $data['company_name'] ?? null,
             $data['source'] ?? 'google_scrape',
-            $id
+            $tickerId
         ];
         
         if ($exists) {

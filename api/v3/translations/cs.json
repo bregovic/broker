@@ -142,5 +142,8 @@
     "trend_ema": "EMA",
     "refresh": "Obnovit",
     "col_qty": "Množství",
+    "filter_watched_on": "Jen sledované",
+    "filter_watched_off": "Všechny tituly",
+    "btn_update_prices": "Aktualizovat ceny",
     "locale": "cs"
 }

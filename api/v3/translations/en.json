@@ -126,5 +126,8 @@
     "trend_ema": "EMA",
     "refresh": "Refresh",
     "col_qty": "Qty",
+    "filter_watched_on": "Watched Only",
+    "filter_watched_off": "All Tickers",
+    "btn_update_prices": "Update Prices",
     "locale": "en"
 }
