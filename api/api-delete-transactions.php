@@ -43,29 +43,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// Load env
-$paths = [
-    __DIR__.'/env.local.php', 
-    __DIR__.'/php/env.local.php', 
-    __DIR__.'/../env.local.php', 
-    __DIR__.'/../../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__.'/env.php',
-    __DIR__.'/../env.php',
-    __DIR__.'/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-foreach($paths as $p) { if(file_exists($p)) { require_once $p; break; } }
-
-if (!defined('DB_HOST')) {
-    echo json_encode(['success' => false, 'error' => 'DB Config Missing']);
-    exit;
-}
+// DB připojení přes jednotný adaptér (MySQL lokálně / PostgreSQL na Railway)
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-    ]);
+    $pdo = get_pdo();
     
     $input = json_decode(file_get_contents('php://input'), true);
     
@@ -105,7 +87,7 @@ try {
             
             switch ($key) {
                 case 'ticker':
-                    $conditions[] = "id = ?";
+                    $conditions[] = "ticker = ?";
                     $params[] = strtoupper($value);
                     break;
                 case 'trans_type':

@@ -13,6 +13,18 @@
   flat-PHP files (`div.php`, `bal.php`, `sal.php`) still use case-sensitive
   filters; the legacy ones query a non-existent `broker_trans` and are dead.
 
+## [Unreleased] - 2026-05-29 (b)
+### Fixed — legacy endpoints couldn't connect on Railway (hardcoded MySQL)
+- Several frontend-wired endpoints built a hardcoded `new PDO("mysql:...")` and
+  relied on a non-existent `api/db.php` → broken on Railway PostgreSQL.
+- `ajax-get-chart-data.php`: use `get_pdo()`; fix column `date` → `history_date`
+  (verified: returns 502 rows for a real ticker).
+- `api-delete-transactions.php`: use `get_pdo()`; fix ticker filter `id` → `ticker`.
+- Known remaining: `ajax-update-prices` (id/ticker drift), `api-comments` /
+  `ajax-get-user` / `api-dev-history` target tables that don't exist in the
+  production schema (`changerequest_*`, `development_history`) — needs schema
+  decision before fixing. ~23 dead `broker_*` legacy files pending cleanup.
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.
