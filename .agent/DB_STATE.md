@@ -47,10 +47,10 @@ description: Verified state of the production Railway PostgreSQL DB + known sche
 - [x] `api-dividends.php`, `api-pnl.php` — case-insensitive `trans_type`.
 - [x] `ajax-get-chart-data.php` — `get_pdo()` + `history_date`.
 - [x] `api-delete-transactions.php` — `get_pdo()` + ticker filter.
-- [ ] `ajax-update-prices.php` — `get_pdo()` + fix `transactions.id` references → `ticker`.
+- [x] `ajax-update-prices.php` — `get_pdo()` + `transactions.id` → `ticker`.
+- [x] `ajax-toggle-watch.php` — `get_pdo()` + rewritten to toggle the `watch` table.
 - [x] Helpdesk/dev-history schema created in prod (`api/sql/helpdesk_schema.sql`).
 - [x] `api-comments.php` (get_pdo + string_agg), `api-dev-history.php` (get_pdo + to_char,
       added `date` col), `ajax-get-user.php` (get_pdo). `api-changerequests.php` already OK.
-- [ ] `ajax-toggle-watch.php` — `get_pdo()` + `broker_live_quotes`→`live_quotes`, `id`→`ticker`.
 - [ ] Cleanup: archive ~23 dead `broker_*` files + one-off `setup_/debug_/fix_/migrate_` scripts.
 - [ ] Consolidate `init_broker.php` so a fresh environment bootstraps the FULL intended schema.

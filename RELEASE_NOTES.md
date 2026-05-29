@@ -39,6 +39,15 @@
 - `ajax-get-user.php`: `get_pdo()` (both connection sites).
 - `api-changerequests.php` already used `get_pdo()`; works now that tables exist.
 
+## [Unreleased] - 2026-05-29 (d)
+### Fixed — watchlist toggle & price refresh (last broken frontend endpoints)
+- `ajax-update-prices.php`: `get_pdo()`; fixed currency subquery
+  `transactions.id` → `transactions.ticker` (verified on live DB).
+- `ajax-toggle-watch.php`: rewritten to the real contract — `POST {ticker}`
+  toggles a row in the `watch` table for the session user (was updating a
+  non-existent `broker_live_quotes.track_history`). Mirrors the proven
+  `toggle` action in `ajax-manage-watchlist.php`.
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.

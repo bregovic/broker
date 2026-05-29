@@ -5,29 +5,11 @@ set_time_limit(600); // 10 minutes
 ignore_user_abort(true);
 ini_set('memory_limit', '512M');
 
-// 1. Zjistíme připojení k DB
-$envPaths = [
-    __DIR__ . '/env.local.php',
-    __DIR__ . '/../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__ . '/../../env.local.php',
-    __DIR__ . '/php/env.local.php',
-    __DIR__ . '/env.php',
-    __DIR__ . '/../env.php',
-    __DIR__ . '/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-
-foreach ($envPaths as $path) {
-    if (file_exists($path)) {
-        require_once $path;
-        break;
-    }
-}
-if (!defined('DB_HOST')) require_once __DIR__.'/db.php';
+// DB připojení přes jednotný adaptér (MySQL lokálně / PostgreSQL na Railway)
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo = get_pdo();
     
     // Načteme službu
     require_once __DIR__ . '/googlefinanceservice.php';
@@ -37,7 +19,7 @@ try {
     // Transactions are source of truth for currency
     $stmt = $pdo->query("
         SELECT DISTINCT lq.id, 
-               (SELECT currency FROM transactions WHERE id = lq.id LIMIT 1) as tx_currency
+               (SELECT currency FROM transactions WHERE ticker = lq.id LIMIT 1) as tx_currency
         FROM live_quotes lq 
         WHERE lq.status = 'active'
     ");
