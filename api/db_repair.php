@@ -29,32 +29,38 @@ try {
         $t = strtoupper(trim($t));
         if (empty($t) || preg_match('/^(CASH_|FEE_|FX_|CORP_)/', $t)) continue;
 
-        // Check if exists in live_quotes
-        $stmtCheck = $pdo->prepare("SELECT 1 FROM live_quotes WHERE id = ? OR ticker = ? LIMIT 1");
-        $stmtCheck->execute([$t, $t]);
-        $exists = (bool)$stmtCheck->fetchColumn();
+        try {
+            // Check if exists in live_quotes
+            $stmtCheck = $pdo->prepare("SELECT 1 FROM live_quotes WHERE id = ? OR ticker = ? LIMIT 1");
+            $stmtCheck->execute([$t, $t]);
+            $exists = (bool)$stmtCheck->fetchColumn();
 
-        if (!$exists) {
-            echo "Registering ticker: $t ... ";
-            $assetType = 'stock';
-            $knownCrypto = ['BTC','ETH','SOL','ADA','DOT','XRP','LTC','DOGE','USDT'];
-            if (in_array($t, $knownCrypto)) {
-                $assetType = 'crypto';
-            }
+            if (!$exists) {
+                echo "Registering ticker: $t ... ";
+                $assetType = 'stock';
+                $knownCrypto = ['BTC','ETH','SOL','ADA','DOT','XRP','LTC','DOGE','USDT'];
+                if (in_array($t, $knownCrypto)) {
+                    $assetType = 'crypto';
+                }
 
-            // Insert into live_quotes
-            $sqlLQ = "INSERT INTO live_quotes (id, ticker, asset_type, last_fetched, status) 
-                      VALUES (?, ?, ?, NOW(), 'active')";
-            $pdo->prepare($sqlLQ)->execute([$t, $t, $assetType]);
-            
-            // Try to fetch fresh quote from Google/Yahoo immediately
-            try {
-                $gService->getQuote($t, true);
-                echo "OK (price updated)\n";
-            } catch (Exception $quoteEx) {
-                echo "OK (quote update failed: " . $quoteEx->getMessage() . ")\n";
+                // Insert into live_quotes with default 0.00 values to satisfy NOT NULL constraints
+                $sqlLQ = "INSERT INTO live_quotes (id, ticker, asset_type, price, current_price, last_fetched, status) 
+                          VALUES (?, ?, ?, 0.00, 0.00, NOW(), 'active')";
+                $pdo->prepare($sqlLQ)->execute([$t, $t, $assetType]);
+                
+                // Try to fetch fresh quote from Google/Yahoo immediately
+                try {
+                    $gService->getQuote($t, true);
+                    echo "OK (price updated)\n";
+                } catch (Exception $quoteEx) {
+                    echo "OK (quote update failed: " . $quoteEx->getMessage() . ")\n";
+                }
+                $addedToQuotes++;
+            } else {
+                echo "Ticker already exists: $t\n";
             }
-            $addedToQuotes++;
+        } catch (Exception $innerEx) {
+            echo "FAILED for $t: " . $innerEx->getMessage() . "\n";
         }
     }
 
