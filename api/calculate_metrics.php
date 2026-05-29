@@ -66,10 +66,32 @@ try {
             }
         }
 
+        // All-time high/low + resilience (drawdown/recovery cycles) from full history.
+        // Same algorithm as ajax-fetch-history.php so batch & lazy paths agree.
+        $allPrices = array_map(function ($h) { return (float)$h['price']; }, $history);
+        $ath = null; $atl = null;
+        foreach ($allPrices as $p) {
+            if ($p <= 0) continue;
+            if ($ath === null || $p > $ath) $ath = $p;
+            if ($atl === null || $p < $atl) $atl = $p;
+        }
+        $resilience = 0; $peak = 0; $inCrash = false;
+        foreach ($allPrices as $p) {
+            if ($p <= 0) continue;
+            if ($p > $peak) {
+                if ($inCrash) { $resilience++; $inCrash = false; }
+                $peak = $p;
+            } else {
+                if ($inCrash && $p >= $peak * 0.85) { $resilience++; $inCrash = false; $peak = $p; }
+                $dd = ($peak - $p) / ($peak ?: 1);
+                if ($dd > 0.30 && !$inCrash) { $inCrash = true; }
+            }
+        }
+
         // Update DB
-        $upd = $pdo->prepare("UPDATE live_quotes SET high_52w = ?, low_52w = ?, ema_212 = ? WHERE id = ?");
-        $upd->execute([$high, $low, $ema, $ticker]);
-        echo "Updated $ticker: High=$high, Low=$low, EMA=" . ($ema ? number_format($ema, 2) : 'N/A') . "\n";
+        $upd = $pdo->prepare("UPDATE live_quotes SET high_52w = ?, low_52w = ?, ema_212 = ?, all_time_high = ?, all_time_low = ?, resilience_score = ? WHERE id = ?");
+        $upd->execute([$high, $low, $ema, $ath, $atl, $resilience, $ticker]);
+        echo "Updated $ticker: 52wH=$high 52wL=$low ATH=$ath EMA=" . ($ema ? number_format($ema, 2) : 'N/A') . " Resil=$resilience\n";
     }
 
     echo "Done.";
