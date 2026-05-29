@@ -32,6 +32,8 @@ interface PnLItem {
     ticker: string;
     qty: number;
     profit_czk: number;
+    fx_czk: number;
+    fees_czk: number;
     net_profit_czk: number;
     tax_test: boolean;
     holding_days: number;
@@ -43,6 +45,8 @@ interface PnLStats {
     net_profit: number;
     realized_profit: number;
     realized_loss: number;
+    fx_total: number;
+    fees_total: number;
     tax_free_profit: number;
     taxable_profit: number;
     winning: number;
@@ -83,18 +87,22 @@ export const PnLPage = () => {
     // Recalculate stats when grid is filtered
     const handleFilteredDataChange = useCallback((filteredData: PnLItem[]) => {
         const net_profit = filteredData.reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
-        const realized_profit = filteredData.filter(i => i.profit_czk >= 0).reduce((sum, i) => sum + i.profit_czk, 0);
-        const realized_loss = filteredData.filter(i => i.profit_czk < 0).reduce((sum, i) => sum + Math.abs(i.profit_czk), 0);
-        const tax_free_profit = filteredData.filter(i => i.tax_test).reduce((sum, i) => sum + i.net_profit_czk, 0);
-        const winning = filteredData.filter(i => i.profit_czk >= 0).length;
-        const losing = filteredData.filter(i => i.profit_czk < 0).length;
+        const realized_profit = filteredData.filter(i => (i.net_profit_czk || 0) >= 0).reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
+        const realized_loss = filteredData.filter(i => (i.net_profit_czk || 0) < 0).reduce((sum, i) => sum + Math.abs(i.net_profit_czk || 0), 0);
+        const fx_total = filteredData.reduce((sum, i) => sum + (i.fx_czk || 0), 0);
+        const fees_total = filteredData.reduce((sum, i) => sum + (i.fees_czk || 0), 0);
+        const tax_free_profit = filteredData.filter(i => i.tax_test).reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
+        const winning = filteredData.filter(i => (i.net_profit_czk || 0) >= 0).length;
+        const losing = filteredData.filter(i => (i.net_profit_czk || 0) < 0).length;
 
         setStats(prev => {
-            const current = prev || { net_profit: 0, realized_profit: 0, realized_loss: 0, tax_free_profit: 0, taxable_profit: 0, winning: 0, losing: 0, total_count: 0 };
+            const current = prev || { net_profit: 0, realized_profit: 0, realized_loss: 0, fx_total: 0, fees_total: 0, tax_free_profit: 0, taxable_profit: 0, winning: 0, losing: 0, total_count: 0 };
             // Check for equality to prevent infinite loop
             if (
                 Math.abs(current.net_profit - net_profit) < 0.01 &&
                 Math.abs(current.realized_profit - realized_profit) < 0.01 &&
+                Math.abs((current.fx_total || 0) - fx_total) < 0.01 &&
+                Math.abs((current.fees_total || 0) - fees_total) < 0.01 &&
                 current.winning === winning &&
                 current.losing === losing
             ) {
@@ -105,6 +113,8 @@ export const PnLPage = () => {
                 net_profit,
                 realized_profit,
                 realized_loss,
+                fx_total,
+                fees_total,
                 tax_free_profit,
                 winning,
                 losing,
@@ -142,6 +152,22 @@ export const PnLPage = () => {
                 </Text>
             ),
             compare: (a: PnLItem, b: PnLItem) => a.net_profit_czk - b.net_profit_czk
+        },
+        {
+            columnId: 'fx_czk', renderHeaderCell: () => t('col_fx') || 'Kurz. rozdíl', renderCell: (item: PnLItem) => (
+                <Text className={(item.fx_czk || 0) >= 0 ? styles.positive : styles.negative}>
+                    {(item.fx_czk || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </Text>
+            ),
+            compare: (a: PnLItem, b: PnLItem) => (a.fx_czk || 0) - (b.fx_czk || 0)
+        },
+        {
+            columnId: 'fees_czk', renderHeaderCell: () => t('col_fees') || 'Poplatky', renderCell: (item: PnLItem) => (
+                <Text className={styles.negative}>
+                    {(item.fees_czk || 0) > 0 ? '-' : ''}{(item.fees_czk || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </Text>
+            ),
+            compare: (a: PnLItem, b: PnLItem) => (a.fees_czk || 0) - (b.fees_czk || 0)
         },
         {
             columnId: 'tax_test', renderHeaderCell: () => t('col_tax_test'), renderCell: (item: PnLItem) => (
@@ -191,6 +217,18 @@ export const PnLPage = () => {
                                 -{stats.realized_loss?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
                             </div>
                             <Text size={200}>{stats.losing} {t('trades_count')}</Text>
+                        </Card>
+                        <Card className={styles.statCard}>
+                            <div className={styles.statLabel}>{t('pnl_fx') || 'Kurzový rozdíl'}</div>
+                            <div className={`${styles.statValue} ${(stats.fx_total || 0) >= 0 ? styles.positive : styles.negative}`}>
+                                {(stats.fx_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                            </div>
+                        </Card>
+                        <Card className={styles.statCard}>
+                            <div className={styles.statLabel}>{t('pnl_fees') || 'Poplatky'}</div>
+                            <div className={`${styles.statValue} ${styles.negative}`}>
+                                {(stats.fees_total || 0) > 0 ? '-' : ''}{(stats.fees_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                            </div>
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_tax_free')}</div>
