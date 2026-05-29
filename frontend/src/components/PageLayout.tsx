@@ -1,5 +1,5 @@
 
-import { makeStyles, tokens } from '@fluentui/react-components';
+import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components';
 
 const useStyles = makeStyles({
     root: {
@@ -59,10 +59,18 @@ const useContentStyles = makeStyles({
             padding: '12px',
             gap: '12px'
         }
+    },
+    // noScroll keeps the inner grid scrolling on desktop, but on mobile the stacked
+    // summary cards + grid are taller than the viewport, so let the whole page scroll.
+    noScroll: {
+        overflow: 'hidden',
+        '@media (max-width: 768px)': {
+            overflow: 'auto'
+        }
     }
 });
 
 export const PageContent: React.FC<{ children: React.ReactNode; noScroll?: boolean }> = ({ children, noScroll }) => {
     const styles = useContentStyles();
-    return <div className={styles.root} style={noScroll ? { overflow: 'hidden' } : undefined}>{children}</div>;
+    return <div className={noScroll ? mergeClasses(styles.root, styles.noScroll) : styles.root}>{children}</div>;
 };

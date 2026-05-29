@@ -85,6 +85,14 @@ const useStyles = makeStyles({
     helpPopover: {
         padding: '12px',
         maxWidth: '300px'
+    },
+    // On phones Fluent's DataGrid squeezes all columns into the viewport, making
+    // them unreadably narrow. Give the grid a sensible minimum width so columns
+    // keep a usable size and the grid scrolls horizontally instead.
+    grid: {
+        '@media (max-width: 768px)': {
+            minWidth: '720px'
+        }
     }
 });
 
@@ -527,6 +535,7 @@ export const SmartDataGrid = <T,>({ items, columns, getRowId,
     // Sticky Header Rendering Helper
     const renderHeader = () => (
         <DataGrid
+            className={styles.grid}
             items={processedItems}
             columns={columns}
             sortable={false}
@@ -560,6 +569,7 @@ export const SmartDataGrid = <T,>({ items, columns, getRowId,
 
     const renderBody = (itemsToRender: T[]) => (
         <DataGrid
+            className={styles.grid}
             items={itemsToRender}
             columns={columns}
             sortable={false}
@@ -605,6 +615,7 @@ export const SmartDataGrid = <T,>({ items, columns, getRowId,
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 <div style={{ flex: 1, overflow: 'auto' }}>
                     <DataGrid
+                        className={styles.grid}
                         items={processedItems}
                         columns={columns}
                         sortable={false}
