@@ -30,6 +30,10 @@ try {
 }
 
 try {
+    // Make sure we have a current CZK fixing (pulls ČNB on-demand if stale).
+    require_once __DIR__ . '/rate_sync.php';
+    ensure_current_rates($pdo);
+
     // 1. Fetch Rates (Robustly)
     $rates = ['CZK' => 1];
     try {

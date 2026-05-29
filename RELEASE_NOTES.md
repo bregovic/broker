@@ -58,6 +58,14 @@
   separator position and treats a lone comma with 3 trailing digits as thousands.
 - Re-import the affected statements to correct the data.
 
+## [Unreleased] - 2026-05-29 (f)
+### Added — on-demand FX rate sync for valuations
+- `rate_sync.php`: `ensure_current_rates()` pulls the ČNB daily fixing into
+  `rates` when the newest stored rate is stale (cached — only the first request
+  of the day hits ČNB; fails silently if unreachable).
+- `api-portfolio.php` calls it so the Balance page values holdings with a current
+  CZK rate instead of the last imported one (e.g. USD 21.333 from March → 20.851).
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.
