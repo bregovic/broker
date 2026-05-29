@@ -23,6 +23,21 @@ description: Verified state of the production Railway PostgreSQL DB + known sche
   reference these). They were renamed to the non-prefixed tables during the PG migration but
   the old code was never updated. All such files are effectively dead.
 
+## 🔴 OPEN: USD amounts never converted to CZK (affects Portfolio, P&L, Dividends)
+All USD transactions have `ex_rate = 1` and `amount_czk = amount_cur` — the importer
+never applied the USD→CZK rate. So CZK totals are ~22× too low for USD assets
+(e.g. dividends show 4 443 "Kč" but it's 4 443 USD ≈ ~98 000 CZK). Scope (user 5):
+DIVIDEND 356/356, BUY 124/138, SELL 26/45 unconverted. USD rates exist in `rates`
+(2025-01-01…2026-03-30). Fix = backfill `ex_rate`/`amount_czk` from `rates` (by date)
+AND fix the importer so it converts. **Pending user go-ahead (changes portfolio numbers).**
+
+## Market metrics (high/low, EMA, ATH, resilience)
+- `calculate_metrics.php` (batch) computes 52w high/low + EMA 212 from `tickers_history`
+  → fixed for PG (get_pdo, history_date, idempotent ALTERs) and restored. Run it via
+  `/api/calculate_metrics.php` to populate `live_quotes`.
+- `ajax-fetch-history.php` computes `all_time_high/low` + `resilience_score` lazily,
+  per-ticker, when a ticker's history is opened — so most are NULL until viewed.
+
 ## Data conventions (verified)
 - **`trans_type` is stored UPPERCASE**: `DIVIDEND` (428), `BUY` (155), `SELL` (47).
   Always compare case-insensitively: `UPPER(trans_type) IN ('DIVIDEND', ...)`.
