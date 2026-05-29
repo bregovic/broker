@@ -52,5 +52,12 @@ description: Verified state of the production Railway PostgreSQL DB + known sche
 - [x] Helpdesk/dev-history schema created in prod (`api/sql/helpdesk_schema.sql`).
 - [x] `api-comments.php` (get_pdo + string_agg), `api-dev-history.php` (get_pdo + to_char,
       added `date` col), `ajax-get-user.php` (get_pdo). `api-changerequests.php` already OK.
-- [ ] Cleanup: archive ~23 dead `broker_*` files + one-off `setup_/debug_/fix_/migrate_` scripts.
+- [x] Cleanup: deleted ~70 dead files (legacy flat-PHP `bal/sal/div/market/portfolio/broker`,
+      `debug_/diag_/fix_/cleanup_/migrate_/rename_/restore_/check_/setup_*` one-offs, legacy
+      `import.php`/`csv-import.php`, versioned `add_market_trans_v*`). All verified: not
+      included by live code, not called by the frontend. Recoverable via git history.
+      **Kept (verify before touching):** `agent_api.php`, `workflow_executor.php`,
+      `cnb-import.php`, `deploy_hook.php` (possible external/cron callers).
+- [ ] `rates.php` is a hybrid: `?api=1` returns JSON (used by import) — its legacy HTML
+      branch still links to deleted pages (cosmetic; React never loads it). Tidy later.
 - [ ] Consolidate `init_broker.php` so a fresh environment bootstraps the FULL intended schema.
