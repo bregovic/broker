@@ -42,6 +42,19 @@ Existing rows can be re-imported (user's choice) or backfilled with the same log
 - `ajax-fetch-history.php` computes `all_time_high/low` + `resilience_score` lazily,
   per-ticker, when a ticker's history is opened — so most are NULL until viewed.
 
+## ⚠️ Historical FX rates: 2022 was corrupted (CNB yearly-file column shift)
+`cnb-import-year.php` parses CNB `rok.txt` by header column index. In 2022 CNB
+**dropped RUB mid-year**, so the header (34 cols) no longer matched the data rows
+(33 cols) — everything after the gap shifted, and "USD" got the XDR value
+(31.747 instead of 24.697 on 2022-10-31). This silently broke valuation/P&L for
+all 2022 USD transactions.
+- **Fix applied (2026-05-29):** rebuilt USD history 2019–2026 from CNB's
+  *single-currency* endpoint (`vybrane.txt?mena=USD`, which carries the code per
+  row → immune to basket changes), then recomputed `ex_rate`/`amount_czk` for all
+  631 non-CZK transactions. Verified: 2022-10-31 USD = 24.697; IBM gross 19 698 → 7 990.
+- **TODO (durable):** `cnb-import-year.php` is still fragile — do NOT re-run it for
+  2022. Replace historical rate import with the single-currency endpoint.
+
 ## Data conventions (verified)
 - **`trans_type` is stored UPPERCASE**: `DIVIDEND` (428), `BUY` (155), `SELL` (47).
   Always compare case-insensitively: `UPPER(trans_type) IN ('DIVIDEND', ...)`.
