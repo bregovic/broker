@@ -224,7 +224,10 @@ try {
 
         if (empty($items)) {
             echo json_encode(['success' => false, 'message' => 'Žádné položky k importu.']);
-           $summary = [];
+            exit;
+        }
+
+        $summary = [];
         $tickersToWatch = [];
         
         // 2.1 Schema introspection for transactions table to support legacy vs v3 schemas dynamically

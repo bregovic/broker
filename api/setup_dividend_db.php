@@ -92,5 +92,24 @@ function ensure_dividend_db_setup(PDO $pdo) {
     } catch (Exception $colEx) {
         error_log("setup_dividend_db: Warning checking/adding source column to tickers_history - " . $colEx->getMessage());
     }
+
+    // 4. Self-healing check for ticker_mapping isin column
+    try {
+        $hasIsin = false;
+        if ($driver === 'pgsql') {
+            $stmtCol = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name='ticker_mapping' AND column_name='isin'");
+            $stmtCol->execute();
+            $hasIsin = (bool)$stmtCol->fetchColumn();
+        } else {
+            $stmtCol = $pdo->prepare("SHOW COLUMNS FROM ticker_mapping LIKE 'isin'");
+            $stmtCol->execute();
+            $hasIsin = (bool)$stmtCol->fetchColumn();
+        }
+        if (!$hasIsin) {
+            $pdo->exec("ALTER TABLE ticker_mapping ADD COLUMN isin VARCHAR(12) NULL");
+        }
+    } catch (Exception $colEx) {
+        error_log("setup_dividend_db: Warning checking/adding isin column to ticker_mapping - " . $colEx->getMessage());
+    }
 }
 
