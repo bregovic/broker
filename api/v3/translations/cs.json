@@ -6,7 +6,8 @@
         "loading": "Načítám...",
         "error": "Chyba",
         "done": "Dokončeno",
-        "refresh": "Obnovit"
+        "refresh": "Obnovit",
+        "admin_pass": "Administrátorské heslo (k odemčení správy)"
     },
     "nav": {
         "dashboard": "Přehled",
@@ -110,6 +111,8 @@
     "btn_import": "Importovat",
     "settings.title": "Nastavení",
     "settings.language": "Jazyk",
+    "settings.general": "Obecné",
+    "settings.admin": "Správa",
     "col_ticker": "Ticker",
     "col_company": "Společnost",
     "col_exchange": "Burza",

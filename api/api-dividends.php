@@ -34,7 +34,7 @@ try {
 $sql = "SELECT 
             trans_id AS id, 
             date, 
-            id AS ticker, 
+            ticker, 
             trans_type AS type, 
             amount_cur AS amount, 
             currency, 

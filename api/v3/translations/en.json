@@ -4,7 +4,8 @@
         "cancel": "Cancel",
         "delete": "Delete",
         "loading": "Loading...",
-        "error": "Error"
+        "error": "Error",
+        "admin_pass": "Administrator password (to unlock admin settings)"
     },
     "nav": {
         "dashboard": "Dashboard",
@@ -94,6 +95,8 @@
     "import.working": "Processing...",
     "settings.title": "Settings",
     "settings.language": "Language",
+    "settings.general": "General",
+    "settings.admin": "Administration",
     "col_ticker": "Ticker",
     "col_company": "Company",
     "col_exchange": "Exchange",
