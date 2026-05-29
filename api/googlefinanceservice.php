@@ -265,6 +265,14 @@ class GoogleFinanceService
      * Uloží/aktualizuje záznam v live_quotes.
      */
     public function saveQuote($tickerId, $data) {
+        // Self-healing database check for dividend columns in live_quotes
+        require_once __DIR__ . '/setup_dividend_db.php';
+        try {
+            ensure_dividend_db_setup($this->pdo);
+        } catch (Exception $e) {
+            error_log("GoogleFinanceService: ensure_dividend_db_setup failed: " . $e->getMessage());
+        }
+
         $driver = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         
         // Explicitně zkontrolujeme existenci

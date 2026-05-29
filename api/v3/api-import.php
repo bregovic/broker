@@ -25,6 +25,7 @@ function resolveRate($pdo, string $date, string $currency) {
     if ($currency === 'CZK') return 1.0;
     
     $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
+    $inTransaction = $pdo->inTransaction();
     
     if ($driver !== 'pgsql') {
         try {
@@ -35,12 +36,30 @@ function resolveRate($pdo, string $date, string $currency) {
         } catch (\Exception $e) {}
     }
     
+    $useSavepoint = ($driver === 'pgsql' && $inTransaction);
+    if ($useSavepoint) {
+        try {
+            $pdo->exec("SAVEPOINT resolve_rate_sp");
+        } catch (\Exception $spEx) {
+            $useSavepoint = false;
+        }
+    }
+    
     try {
         $stmt = $pdo->prepare("SELECT rate FROM fx_rates WHERE currency_from=? AND currency_to='CZK' AND rate_date<=? ORDER BY rate_date DESC LIMIT 1");
         $stmt->execute([$currency, $date]);
         $val = $stmt->fetchColumn();
+        if ($useSavepoint) {
+            $pdo->exec("RELEASE SAVEPOINT resolve_rate_sp");
+        }
         if ($val !== false) return (float)$val;
-    } catch (\Exception $e) {}
+    } catch (\Exception $e) {
+        if ($useSavepoint) {
+            try {
+                $pdo->exec("ROLLBACK TO SAVEPOINT resolve_rate_sp");
+            } catch (\Exception $rollbackEx) {}
+        }
+    }
     
     return 1.0;
 }
@@ -205,10 +224,29 @@ try {
 
         if (empty($items)) {
             echo json_encode(['success' => false, 'message' => 'Žádné položky k importu.']);
-            exit;
+           $summary = [];
+        $tickersToWatch = [];
+        
+        // 2.1 Schema introspection for transactions table to support legacy vs v3 schemas dynamically
+        $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        $existingCols = [];
+        try {
+            if ($driver === 'pgsql') {
+                $stmtCols = $db->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'transactions'");
+                $existingCols = $stmtCols->fetchAll(\PDO::FETCH_COLUMN);
+            } else {
+                $stmtCols = $db->query("DESCRIBE transactions");
+                $existingCols = $stmtCols->fetchAll(\PDO::FETCH_COLUMN);
+            }
+        } catch (Throwable $colEx) {
+            // Safe fallback schema
+            $existingCols = [
+                'rec_id', 'ticker', 'transaction_date', 'type', 'quantity', 'price_per_unit',
+                'currency', 'fee', 'total_amount', 'source_broker', 'broker_trade_id', 'metadata', 'created_at'
+            ];
         }
+        $existingCols = array_map('strtolower', $existingCols);
 
-        $summary = [];
         $db->beginTransaction();
         
         try {
@@ -256,53 +294,72 @@ try {
                         $price = abs($price);
                     }
                     
-                    $sql = "INSERT INTO transactions 
-                            (
-                                user_id, date, id, amount, price, ex_rate, amount_cur, currency, amount_czk, platform, product_type, trans_type, fees, notes, fingerprint,
-                                ticker, transaction_date, type, quantity, price_per_unit, fee, total_amount, source_broker, broker_trade_id, metadata
-                            )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT (broker_trade_id) DO NOTHING";
+                    // Prevent double json encoding of metadata
+                    $metadataVal = is_string($data['metadata']) ? $data['metadata'] : json_encode($data['metadata']);
                     
-                    $stmtIns = $db->prepare($sql);
-                    $stmtIns->execute([
+                    // Map possible values to table columns
+                    $columnMapping = [
                         // Legacy columns
-                        $userId,
-                        $data['transaction_date'],
-                        $data['ticker'],
-                        $qty,
-                        $price,
-                        $exRate,
-                        $amountCur,
-                        $data['currency'],
-                        $amountCzk,
-                        $data['source_broker'],
-                        $productType,
-                        $data['type'],
-                        $data['fee'] ?? 0.0,
-                        'import: ' . $data['source_broker'],
-                        $data['broker_trade_id'],
+                        'user_id' => $userId,
+                        'date' => $data['transaction_date'],
+                        'id' => $data['ticker'],
+                        'amount' => $qty,
+                        'price' => $price,
+                        'ex_rate' => $exRate,
+                        'amount_cur' => $amountCur,
+                        'currency' => $data['currency'],
+                        'amount_czk' => $amountCzk,
+                        'platform' => $data['source_broker'],
+                        'product_type' => $productType,
+                        'trans_type' => $data['type'],
+                        'fees' => $data['fee'] ?? 0.0,
+                        'notes' => 'import: ' . $data['source_broker'],
+                        'fingerprint' => $data['broker_trade_id'],
                         
                         // New columns
-                        $data['ticker'],
-                        $data['transaction_date'],
-                        $data['type'],
-                        $data['quantity'],
-                        $data['price_per_unit'],
-                        $data['fee'],
-                        $data['total_amount'],
-                        $data['source_broker'],
-                        $data['broker_trade_id'],
-                        json_encode($data['metadata'])
-                    ]);
+                        'ticker' => $data['ticker'],
+                        'transaction_date' => $data['transaction_date'],
+                        'type' => $data['type'],
+                        'quantity' => $data['quantity'],
+                        'price_per_unit' => $data['price_per_unit'],
+                        'fee' => $data['fee'],
+                        'total_amount' => $data['total_amount'],
+                        'source_broker' => $data['source_broker'],
+                        'broker_trade_id' => $data['broker_trade_id'],
+                        'metadata' => $metadataVal
+                    ];
+                    
+                    $insertCols = [];
+                    $insertVals = [];
+                    foreach ($columnMapping as $col => $val) {
+                        if (in_array(strtolower($col), $existingCols)) {
+                            $insertCols[] = $col;
+                            $insertVals[] = $val;
+                        }
+                    }
+                    
+                    if (empty($insertCols)) {
+                        continue;
+                    }
+                    
+                    $colsStr = implode(', ', $insertCols);
+                    $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
+                    
+                    $conflictClause = "";
+                    if ($driver === 'pgsql' && in_array('broker_trade_id', $existingCols)) {
+                        $conflictClause = " ON CONFLICT (broker_trade_id) DO NOTHING";
+                    }
+                    
+                    $sql = "INSERT INTO transactions ($colsStr) VALUES ($placeholders)" . $conflictClause;
+                    
+                    $stmtIns = $db->prepare($sql);
+                    $stmtIns->execute($insertVals);
                     
                     if ($stmtIns->rowCount() > 0) {
                         $inserted++;
-                        // Auto-add to watchlist in Postgres
-                        try {
-                            $db->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?) ON CONFLICT DO NOTHING")
-                               ->execute([$userId, $data['ticker']]);
-                        } catch (\Exception $e) {}
+                        if (!empty($data['ticker'])) {
+                            $tickersToWatch[] = $data['ticker'];
+                        }
                     }
                     else $skipped++;
                 }
@@ -322,6 +379,18 @@ try {
             }
 
             $db->commit();
+            
+            // Auto-add tickers to watchlist safely AFTER commit (avoids aborting main transaction on watch insert failures)
+            if (!empty($tickersToWatch)) {
+                $tickersToWatch = array_unique($tickersToWatch);
+                foreach ($tickersToWatch as $ticker) {
+                    try {
+                        $db->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?) ON CONFLICT DO NOTHING")
+                           ->execute([$userId, $ticker]);
+                    } catch (\Exception $e) {}
+                }
+            }
+            
             echo json_encode(['success' => true, 'summary' => $summary]);
 
         } catch (Throwable $e) {

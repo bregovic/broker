@@ -115,6 +115,15 @@ try {
         $messages[] = "Migrace $name dokončena.";
     }
 
+    // Include and run dividend database schema setup (self-healing)
+    require_once __DIR__ . '/../setup_dividend_db.php';
+    try {
+        ensure_dividend_db_setup($db);
+        $messages[] = "Migrace dividendních sloupců v live_quotes dokončena.";
+    } catch (\Exception $divEx) {
+        $messages[] = "Varování při migraci dividendních sloupců: " . $divEx->getMessage();
+    }
+
     echo json_encode([
         'success' => true,
         'message' => 'Databáze v3 byla úspěšně inicializována v PostgreSQL.',
