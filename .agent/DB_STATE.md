@@ -23,13 +23,17 @@ description: Verified state of the production Railway PostgreSQL DB + known sche
   reference these). They were renamed to the non-prefixed tables during the PG migration but
   the old code was never updated. All such files are effectively dead.
 
-## 🔴 OPEN: USD amounts never converted to CZK (affects Portfolio, P&L, Dividends)
-All USD transactions have `ex_rate = 1` and `amount_czk = amount_cur` — the importer
-never applied the USD→CZK rate. So CZK totals are ~22× too low for USD assets
-(e.g. dividends show 4 443 "Kč" but it's 4 443 USD ≈ ~98 000 CZK). Scope (user 5):
-DIVIDEND 356/356, BUY 124/138, SELL 26/45 unconverted. USD rates exist in `rates`
-(2025-01-01…2026-03-30). Fix = backfill `ex_rate`/`amount_czk` from `rates` (by date)
-AND fix the importer so it converts. **Pending user go-ahead (changes portfolio numbers).**
+## USD→CZK conversion bug — ROOT CAUSE FOUND & IMPORT FIXED (2026-05-29)
+All USD transactions had `ex_rate = 1` and `amount_czk = amount_cur`, so CZK totals
+were ~22× too low (dividends showed "4 443 Kč" = 4 443 USD ≈ ~98 000 CZK).
+**Root cause:** `resolveRate()` in `api/v3/api-import.php` only queried the `rates`
+table when driver `!= 'pgsql'`; on Railway PostgreSQL it skipped `rates` and queried
+`fx_rates` — which doesn't exist — so it always fell back to `1.0`.
+**Fix:** `resolveRate()` now queries `rates` on all drivers (savepoint-protected),
+uses `rate/amount`, and falls back to the earliest rate for out-of-range dates.
+Accounting currency is **CZK** (stored in `amount_czk`); `base_currency` is display-only.
+→ Re-importing (ImportPage → `/api/v3/api-import.php`) now stores correct `amount_czk`.
+Existing rows can be re-imported (user's choice) or backfilled with the same logic.
 
 ## Market metrics (high/low, EMA, ATH, resilience)
 - `calculate_metrics.php` (batch) computes 52w high/low + EMA 212 from `tickers_history`

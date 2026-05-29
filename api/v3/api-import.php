@@ -22,45 +22,41 @@ function resolveUserId() {
 }
 
 function resolveRate($pdo, string $date, string $currency) {
-    if ($currency === 'CZK') return 1.0;
-    
+    $currency = strtoupper(trim($currency));
+    if ($currency === 'CZK' || $currency === '') return 1.0;
+
     $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
-    $inTransaction = $pdo->inTransaction();
-    
-    if ($driver !== 'pgsql') {
+    $inTx = $pdo->inTransaction();
+
+    // Run one rate query, savepoint-protected so a failure can't abort the
+    // surrounding import transaction on PostgreSQL. `rate` is CZK per `amount`
+    // units of the currency (CNB convention), so the per-unit rate is rate/amount.
+    $tryQuery = function (string $sql, array $params) use ($pdo, $driver, $inTx) {
+        $sp = ($driver === 'pgsql' && $inTx);
+        if ($sp) { try { $pdo->exec("SAVEPOINT rr_sp"); } catch (\Exception $e) { $sp = false; } }
         try {
-            $stmt = $pdo->prepare("SELECT rate FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1");
-            $stmt->execute([$currency, $date]);
-            $val = $stmt->fetchColumn();
-            if ($val !== false) return (float)$val;
-        } catch (\Exception $e) {}
-    }
-    
-    $useSavepoint = ($driver === 'pgsql' && $inTransaction);
-    if ($useSavepoint) {
-        try {
-            $pdo->exec("SAVEPOINT resolve_rate_sp");
-        } catch (\Exception $spEx) {
-            $useSavepoint = false;
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($sp) { $pdo->exec("RELEASE SAVEPOINT rr_sp"); }
+            if ($row && (float)$row['rate'] > 0) {
+                $amt = (float)($row['amount'] ?? 1);
+                return $amt > 0 ? (float)$row['rate'] / $amt : (float)$row['rate'];
+            }
+        } catch (\Exception $e) {
+            if ($sp) { try { $pdo->exec("ROLLBACK TO SAVEPOINT rr_sp"); } catch (\Exception $e2) {} }
         }
-    }
-    
-    try {
-        $stmt = $pdo->prepare("SELECT rate FROM fx_rates WHERE currency_from=? AND currency_to='CZK' AND rate_date<=? ORDER BY rate_date DESC LIMIT 1");
-        $stmt->execute([$currency, $date]);
-        $val = $stmt->fetchColumn();
-        if ($useSavepoint) {
-            $pdo->exec("RELEASE SAVEPOINT resolve_rate_sp");
-        }
-        if ($val !== false) return (float)$val;
-    } catch (\Exception $e) {
-        if ($useSavepoint) {
-            try {
-                $pdo->exec("ROLLBACK TO SAVEPOINT resolve_rate_sp");
-            } catch (\Exception $rollbackEx) {}
-        }
-    }
-    
+        return null;
+    };
+
+    // 1) Latest rate on or before the transaction date (works on MySQL + PostgreSQL).
+    $r = $tryQuery("SELECT rate, amount FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1", [$currency, $date]);
+    if ($r !== null) return $r;
+
+    // 2) Fallback for dates before our rate coverage: earliest available rate.
+    $r = $tryQuery("SELECT rate, amount FROM rates WHERE currency=? ORDER BY date ASC LIMIT 1", [$currency]);
+    if ($r !== null) return $r;
+
     return 1.0;
 }
 
