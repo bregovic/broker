@@ -25,7 +25,8 @@ import {
     Switch,
     Dropdown,
     Option,
-    Label
+    Label,
+    ProgressBar
 } from '@fluentui/react-components';
 import {
     Add24Regular,
@@ -312,9 +313,7 @@ const MarketPage = () => {
                                 {isUpdatingHistory && (
                                     <>
                                         <Spinner label={`Zpracovávám ${historyProgress.lastTicker} (${historyProgress.current} / ${historyProgress.total})`} />
-                                        <div style={{ height: '4px', background: '#f3f2f1', borderRadius: '2px', overflow: 'hidden' }}>
-                                            <div style={{ width: `${historyProgress.total ? (historyProgress.current / historyProgress.total) * 100 : 0}%`, background: '#0078d4', height: '100%', transition: 'width 0.3s' }} />
-                                        </div>
+                                        <ProgressBar value={historyProgress.total ? historyProgress.current / historyProgress.total : 0} />
                                     </>
                                 )}
                                 <div style={{ maxHeight: '200px', overflowY: 'auto', background: '#f3f2f1', padding: '10px', fontSize: '11px', fontFamily: 'monospace', borderRadius: '4px' }}>{historyLog.map((log, i) => <div key={i}>{log}</div>)}</div>
@@ -363,7 +362,10 @@ const MarketPage = () => {
                         <DialogSurface>
                             <DialogBody>
                                 <DialogTitle>{t('add_ticker_title')}</DialogTitle>
-                                <DialogContent><Input value={newTicker} onChange={(_, data) => setNewTicker(data.value)} placeholder="např. MSFT, AAPL" onKeyDown={(e) => { if (e.key === 'Enter') handleAddTicker(); }} /></DialogContent>
+                                <DialogContent style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <Input value={newTicker} onChange={(_, data) => setNewTicker(data.value)} placeholder="např. MSFT, AAPL" onKeyDown={(e) => { if (e.key === 'Enter') handleAddTicker(); }} disabled={adding} />
+                                    {adding && <ProgressBar />}
+                                </DialogContent>
                                 <DialogActions><Button appearance="primary" onClick={handleAddTicker} disabled={adding}>{adding ? t('btn_adding') : t('btn_add')}</Button><DialogTrigger disableButtonEnhancement><Button appearance="secondary">{t('btn_cancel')}</Button></DialogTrigger></DialogActions>
                             </DialogBody>
                         </DialogSurface>

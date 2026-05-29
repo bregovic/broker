@@ -298,6 +298,16 @@ export const ImportPage: React.FC = () => {
                                         </TableCell>
                                     </TableRow>
                                 )}
+                                {importing && (
+                                    <TableRow>
+                                        <TableCell colSpan={5}>
+                                            <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#fdfdfd' }}>
+                                                <ProgressBar />
+                                                <Text italic size={200} style={{ marginTop: '8px', display: 'block' }}>Importuji transakce, prosím čekejte...</Text>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     </div>

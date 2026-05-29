@@ -30,6 +30,14 @@ try {
     $pdo = get_pdo();
     $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     
+    // Ensure database self-heals and contains the status column in ticker_mapping immediately
+    require_once __DIR__ . '/setup_dividend_db.php';
+    try {
+        ensure_dividend_db_setup($pdo);
+    } catch (Exception $dbEx) {
+        error_log("ajax_import_ticker: ensure_dividend_db_setup failed: " . $dbEx->getMessage());
+    }
+    
     // Try to use GoogleFinanceService
     $servicePaths = [
         __DIR__ . '/googlefinanceservice.php',
@@ -162,7 +170,7 @@ try {
         } else {
             echo json_encode([
                 'success' => false,
-                'message' => "GoogleFinanceService nemohl získat data pro {$ticker}"
+                'message' => "GoogleFinanceService nemohl získat data pro '{$ticker}'. Ujistěte se prosím, že zadáváte správný symbol tickeru (např. 'ADBE' pro Adobe, 'AAPL' pro Apple), nikoliv celý název společnosti."
             ]);
             exit;
         }
@@ -177,7 +185,7 @@ try {
 } catch (Exception $e) {
     echo json_encode([
         'success' => false,
-        'message' => 'Chyba: ' . $e->getMessage()
+        'message' => $e->getMessage()
     ]);
     exit;
 }

@@ -111,5 +111,24 @@ function ensure_dividend_db_setup(PDO $pdo) {
     } catch (Exception $colEx) {
         error_log("setup_dividend_db: Warning checking/adding isin column to ticker_mapping - " . $colEx->getMessage());
     }
+
+    // 5. Self-healing check for ticker_mapping status column
+    try {
+        $hasStatus = false;
+        if ($driver === 'pgsql') {
+            $stmtCol = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name='ticker_mapping' AND column_name='status'");
+            $stmtCol->execute();
+            $hasStatus = (bool)$stmtCol->fetchColumn();
+        } else {
+            $stmtCol = $pdo->prepare("SHOW COLUMNS FROM ticker_mapping LIKE 'status'");
+            $stmtCol->execute();
+            $hasStatus = (bool)$stmtCol->fetchColumn();
+        }
+        if (!$hasStatus) {
+            $pdo->exec("ALTER TABLE ticker_mapping ADD COLUMN status VARCHAR(20) DEFAULT 'needs_review'");
+        }
+    } catch (Exception $colEx) {
+        error_log("setup_dividend_db: Warning checking/adding status column to ticker_mapping - " . $colEx->getMessage());
+    }
 }
 
