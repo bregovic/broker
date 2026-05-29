@@ -1,5 +1,18 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-05-29
+### Fixed — `trans_type` case mismatch (Dividends & P&L were empty)
+- Production data stores `trans_type` in UPPERCASE (`DIVIDEND`, `BUY`, `SELL`),
+  but the API filtered Title-case literals (`'Dividend'`, `'Buy'`, `'Sell'`) →
+  every filtered query returned 0 rows.
+- `api-dividends.php`: filter via `UPPER(trans_type) IN (...)`; normalize the
+  `type` returned to the frontend to canonical Title-case.
+- `api-pnl.php`: match `UPPER(trans_type)` for Buy/Sell.
+- Verified against the live DB: 428 dividends and 47 sales now visible (was 0).
+- Follow-up (not yet done): `ajax-check-missing-prices.php` and several legacy
+  flat-PHP files (`div.php`, `bal.php`, `sal.php`) still use case-sensitive
+  filters; the legacy ones query a non-existent `broker_trans` and are dead.
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.

@@ -24,9 +24,9 @@ try {
     // 1. Fetch Sales (ticker instead of id)
     $sql = "SELECT trans_id, date, ticker, amount, price, ex_rate, currency, amount_czk, platform, fees
             FROM transactions 
-            WHERE user_id = ? 
-            AND trans_type = 'Sell' 
-            AND (product_type = 'Stock' OR product_type = 'Crypto') 
+            WHERE user_id = ?
+            AND UPPER(trans_type) = 'SELL'
+            AND (product_type = 'Stock' OR product_type = 'Crypto')
             ORDER BY date DESC, trans_id DESC LIMIT 2000";
             
     $stmt = $pdo->prepare($sql);
@@ -56,7 +56,7 @@ try {
         // Helper calculation for average price (Postgres friendly)
         $sqlBuy = "SELECT date, amount, price, amount_czk, ex_rate 
                    FROM transactions 
-                   WHERE user_id = ? AND ticker = ? AND trans_type = 'Buy' 
+                   WHERE user_id = ? AND ticker = ? AND UPPER(trans_type) = 'BUY'
                    AND date <= ? AND platform = ?
                    ORDER BY date ASC";
         $stmtB = $pdo->prepare($sqlBuy);

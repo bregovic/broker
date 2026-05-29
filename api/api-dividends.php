@@ -107,7 +107,7 @@ $sql = "SELECT
             platform, 
             '' AS notes 
         FROM transactions 
-        WHERE user_id = ? AND trans_type IN ('Dividend', 'Withholding', 'Tax') 
+        WHERE user_id = ? AND UPPER(trans_type) IN ('DIVIDEND', 'WITHHOLDING', 'TAX')
         ORDER BY date DESC, trans_id DESC";
 
 try {
@@ -122,9 +122,10 @@ try {
     $byCurrency = [];
 
     foreach ($rows as $row) {
-        // Normalize type: treat 'Tax' same as 'Withholding' for frontend display
-        $rawType = $row['type'];
-        $displayType = ($rawType === 'Tax') ? 'Withholding' : $rawType;
+        // Normalize type for frontend (case-insensitive): DB may store UPPERCASE
+        // (e.g. 'DIVIDEND'). 'Tax'/'Withholding' are both shown as 'Withholding'.
+        $ut = strtoupper(trim((string)$row['type']));
+        $displayType = ($ut === 'DIVIDEND') ? 'Dividend' : 'Withholding';
 
         $item = [
             'id' => (int)$row['id'],
