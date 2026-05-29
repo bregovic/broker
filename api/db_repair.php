@@ -43,9 +43,9 @@ try {
                     $assetType = 'crypto';
                 }
 
-                // Insert into live_quotes with default 0.00 values to satisfy NOT NULL constraints
-                $sqlLQ = "INSERT INTO live_quotes (id, ticker, asset_type, price, current_price, last_fetched, status) 
-                          VALUES (?, ?, ?, 0.00, 0.00, NOW(), 'active')";
+                // Insert into live_quotes with default price and currency values to satisfy NOT NULL constraints
+                $sqlLQ = "INSERT INTO live_quotes (id, ticker, asset_type, price, current_price, currency, last_fetched, status) 
+                          VALUES (?, ?, ?, 0.00, 0.00, 'USD', NOW(), 'active')";
                 $pdo->prepare($sqlLQ)->execute([$t, $t, $assetType]);
                 
                 // Try to fetch fresh quote from Google/Yahoo immediately
