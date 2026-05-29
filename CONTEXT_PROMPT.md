@@ -1,18 +1,52 @@
-# Antigravity Context Prompt - Broker Project
+# Investyx (Broker 2.0) — Context Prompt
 
-Always refer to this document when working on the Broker project to ensure continuity and best practices.
+> **Single source of truth.** Always read this document before working on the project.
+> Supporting standards live in `.agent/`:
+> - [`.agent/FORM_STANDARD.md`](.agent/FORM_STANDARD.md) — UI, forms & mobile layout rules.
+> - [`.agent/SOP.md`](.agent/SOP.md) — how to make a change safely (workflow + checklist).
+>
+> _Last reviewed: 2026-05-29. Keep this header date current when you make structural changes._
 
 ## Project Summary
-Modernized investment broker application moved from legacy Wedos/MySQL Hosting to Railway/PostgreSQL/Docker.
+**Investyx** is a focused trading / portfolio-management app (stocks, crypto, dividends, P&L, multi-broker imports). It is the actively developed product (repo `bregovic/broker.git`, Railway project "Investyx 2.0"). It was modernized from a legacy Wedos/MySQL app to **Railway + PostgreSQL + Docker**, and still keeps MySQL compatibility for local/legacy use.
+
+> Sibling project **SHANON** (`bregovic/shanon.git`, the `broker 3.0 (railway)` folder) is a separate, broader ERP platform whose development stalled in March 2026. We may selectively port good *framework* pieces from it (forms, mobile, settings, keyboard shortcuts) — but Investyx stays a trading app, not an ERP.
 
 ## Architecture Guidelines
-- **API Base**: All backend logic is in the `/api/` directory.
-- **Frontend**: React/Vite application in the `/frontend/` directory (Fluent UI v9 components).
+- **Backend (API)**: Native PHP in `/api/`. No framework. Entry points are `api-*.php` (current) and `ajax-*.php` (legacy).
+- **Frontend**: React 19 + Vite 7 + TypeScript + **Fluent UI v9** in `/frontend/`.
 - **Database**:
-  - Use `api/get_pdo()` from `api/config.php` for ALL database connections.
-  - Prioritize `DATABASE_URL` environment variable (PostgreSQL).
-  - Use `ON CONFLICT` for Postgres or ensure cross-db compatibility.
-- **Deployment**: Automatic via GitHub Actions -> Railway (Dockerfile-based).
+  - Use `get_pdo()` from `api/config.php` for **all** DB connections. Never hardcode credentials.
+  - `config.php` supports both **PostgreSQL** (Railway, via `DATABASE_URL`) and **MySQL** (legacy/local via `env.local.php`). Write **cross-driver** SQL.
+  - Use `ON CONFLICT` for Postgres; detect the driver via `PDO::ATTR_DRIVER_NAME` when syntax must differ.
+- **Routing**: Frontend is a SPA. Nginx serves the React build at `/` and proxies `/api/*` to PHP. Always call the backend with the `/api/` prefix.
+
+## Project Structure
+```
+/api/            PHP backend (REST-ish endpoints, no framework)
+  config.php       DB adapter — get_pdo(), MySQL+PostgreSQL
+  init_broker.php  Schema bootstrap / seed (run on new environments)
+  db_repair.php    Self-healing: registers tickers, fixes missing columns
+  api-*.php        Current endpoints (login, portfolio, transactions, pnl, dividends, …)
+  ajax-*.php       Legacy endpoints (prices, watchlist, charts)
+  v3/Import/       Object-oriented import layer (see "Import Architecture")
+  js/parsers/      Legacy JS parser implementations (being consolidated)
+/frontend/       React + Vite + TypeScript + Fluent UI v9
+  src/pages/       One file per route
+  src/context/     AuthContext, SettingsContext, TranslationContext
+  src/utils/parsers/  Client-side TS parsers (used by ImportPage)
+Dockerfile       2-stage build (Vite build → php-nginx production image)
+nginx.conf       Serves SPA at /, proxies /api
+```
+
+### Frontend Routes / Modules
+`market` (default) · `portfolio` · `dividends` · `pnl` · `rates` · `balance` · `import` · `requests` (helpdesk) · plus `login` / `register`. One page component per route in `frontend/src/pages/`.
+
+## Deployment
+- **Trigger**: push to `main`.
+- **Railway** builds the `Dockerfile` (stage 1: `npm ci && npm run build` → `frontend/dist`; stage 2: `trafex/php-nginx`, copies `api/` → web root and `dist/` → `public/`, serves on port 8080). DB is PostgreSQL via `DATABASE_URL`.
+- A GitHub Actions workflow also mirrors a build to FTP (`hollyhop.cz/investyx`) as backup.
+- **Before pushing**: run `cd frontend && npm run build` — it must pass (`tsc -b && vite build`).
 
 ## Database Schema – Key Tables
 
@@ -75,26 +109,27 @@ Modernized investment broker application moved from legacy Wedos/MySQL Hosting t
 - `id` / `ticker` column is the ticker symbol
 - `price` / `current_price` for current value
 
-## Frontend Parsers
-Located in `frontend/src/utils/parsers/`:
-- **RevolutParser** – Stocks PDF/CSV (delegates crypto/commodity)
-- **RevolutCryptoParser** – Crypto PDF/CSV
-- **RevolutCommodityParser** – Commodity (XAU, XAG) PDF/CSV
-- **IbkrParser** – Interactive Brokers PDF
-- **Trading212Parser** – Trading 212 CSV/Excel
-- **FioParser** – Fio Banka PDF
-- **CoinbaseParser** – Coinbase CSV
+## Import Architecture
+Broker statements (PDF/CSV) are turned into `transactions`. There are currently **three** parser families — consolidating these is active work (see Current Focus):
+
+1. **`api/v3/Import/` — object-oriented PHP layer (the target).** Wired into `api/v3/api-import.php` via `new ImportManager($db)`.
+   - `AbstractParser` → `Csv/AbstractCsvParser`, `Pdf/*PdfParser`; output normalized through `TransactionDTO`.
+   - Implemented: Fio (CSV), IBKR (PDF), Revolut trading/crypto/commodity (PDF).
+   - **Convention for a new broker**: add a parser class under `Csv/` or `Pdf/` extending the right abstract base, return `TransactionDTO`s, and register it in `ImportManager`.
+2. **`frontend/src/utils/parsers/` — client-side TS parsers** (used by `ImportPage.tsx`): Revolut (+ crypto/commodity), IBKR, Trading212, Fio, Coinbase.
+3. **`api/js/parsers/` — legacy JS** (`ParserFactory`, `BaseParser`, …). Being retired in favor of (1).
+
+> **Goal**: backend `v3/Import` is the canonical engine. When adding/fixing a broker, prefer extending the v3 PHP layer; only touch TS/JS parsers for parity until they are removed.
 
 ## Critical Workflows
-- **New Feature/Fix**:
-  1. Record change in `RELEASE_NOTES.md`.
-  2. If table changes are needed, update `api/init_broker.php`.
-  3. Ensure all paths use the `/api/` prefix in the frontend.
-- **Labels**:
-  - UI labels are managed via `api/api-translations.php` and stored in the `translations` table.
-  - For new labels, add them to the setup script `api/init_broker.php`.
+See [`.agent/SOP.md`](.agent/SOP.md) for the full step-by-step. In short:
+- **New feature / fix**: make the change → `npm run build` must pass → record it in `RELEASE_NOTES.md` → commit (Conventional Commits) → push `main` (deploys).
+- **Schema changes**: keep cross-driver (MySQL + PostgreSQL); reflect new tables/columns in `api/init_broker.php` so fresh environments bootstrap correctly.
+- **Labels / i18n**: UI labels are served by `api/api-translations.php` from the `translations` table; seed new labels in `api/init_broker.php`.
+- **UI / forms**: follow [`.agent/FORM_STANDARD.md`](.agent/FORM_STANDARD.md) (Fluent UI v9, drawer-based forms, mobile-first).
 
 ## Current Focus
-- Ensuring dividend calculations work correctly across all importers.
-- Respecting user's `base_currency` setting in all financial displays.
-- Auditing legacy PHP files in `/api/` to remove hardcoded MySQL connections.
+- **Consolidate import** onto the `api/v3/Import` OO layer; reach broker parity (add Trading212 / Coinbase / eToro to v3) and retire `api/js/parsers`.
+- **Port framework pieces from SHANON**: mobile-optimized forms (drawer pattern), `SmartDataGrid`/`ActionBar`, settings dialog, keyboard shortcuts.
+- Respect `base_currency` from `user_settings` in all financial displays.
+- Continue auditing legacy `/api/` files for hardcoded MySQL connections (use `get_pdo()`).
