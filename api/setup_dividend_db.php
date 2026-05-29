@@ -73,5 +73,24 @@ function ensure_dividend_db_setup(PDO $pdo) {
             error_log("setup_dividend_db: Warning adding $col - " . $e->getMessage());
         }
     }
+
+    // 3. Self-healing check for tickers_history source column
+    try {
+        $hasSource = false;
+        if ($driver === 'pgsql') {
+            $stmtCol = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name='tickers_history' AND column_name='source'");
+            $stmtCol->execute();
+            $hasSource = (bool)$stmtCol->fetchColumn();
+        } else {
+            $stmtCol = $pdo->prepare("SHOW COLUMNS FROM tickers_history LIKE 'source'");
+            $stmtCol->execute();
+            $hasSource = (bool)$stmtCol->fetchColumn();
+        }
+        if (!$hasSource) {
+            $pdo->exec("ALTER TABLE tickers_history ADD COLUMN source VARCHAR(50)");
+        }
+    } catch (Exception $colEx) {
+        error_log("setup_dividend_db: Warning checking/adding source column to tickers_history - " . $colEx->getMessage());
+    }
 }
 
