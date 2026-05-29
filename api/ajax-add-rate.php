@@ -27,23 +27,11 @@ if (!$userId) {
     exit;
 }
 
-$paths = [
-    __DIR__.'/env.local.php', 
-    __DIR__.'/php/env.local.php', 
-    __DIR__.'/../env.local.php', 
-    __DIR__.'/../../env.local.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.local.php',
-    __DIR__.'/env.php',
-    __DIR__.'/../env.php',
-    __DIR__.'/../../env.php',
-    $_SERVER['DOCUMENT_ROOT'] . '/env.php'
-];
-foreach($paths as $p) { if(file_exists($p)) { require_once $p; break; } }
-
-if (!defined('DB_HOST')) { echo json_encode(['success'=>false, 'error'=>'DB Config Missing']); exit; }
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo = get_pdo();
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     
     $input = json_decode(file_get_contents('php://input'), true);
     
@@ -56,14 +44,26 @@ try {
         throw new Exception("Invalid input.");
     }
     
-    // Convert to rate logic if needed (rate is CZK for amount)
-    
-    $sql = "INSERT INTO rates (date, currency, rate, amount, source, created_at) VALUES (?, ?, ?, ?, 'Manual', NOW()) ON DUPLICATE KEY UPDATE rate=VALUES(rate), amount=VALUES(amount)";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$date, $currency, $rate, $amount]);
+    // Check if rate already exists for this currency and date
+    $check = $pdo->prepare("SELECT 1 FROM rates WHERE currency=? AND date=? LIMIT 1");
+    $check->execute([$currency, $date]);
+    $exists = (bool)$check->fetchColumn();
+
+    if ($exists) {
+        // Update existing rate
+        $sql = "UPDATE rates SET rate=?, amount=?, source='Manual' WHERE currency=? AND date=?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$rate, $amount, $currency, $date]);
+    } else {
+        // Insert new rate
+        $sql = "INSERT INTO rates (date, currency, rate, amount, source, created_at) VALUES (?, ?, ?, ?, 'Manual', NOW())";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$date, $currency, $rate, $amount]);
+    }
     
     echo json_encode(['success'=>true]);
 
 } catch (Exception $e) {
     echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
 }
+

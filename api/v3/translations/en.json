@@ -5,7 +5,8 @@
         "delete": "Delete",
         "loading": "Loading...",
         "error": "Error",
-        "admin_pass": "Administrator password (to unlock admin settings)"
+        "admin_pass": "Administrator password (to unlock admin settings)",
+        "admin_pass_help": "Enter password 'Admin123' to unlock advanced settings. This field is not used to change your user password."
     },
     "nav": {
         "dashboard": "Dashboard",

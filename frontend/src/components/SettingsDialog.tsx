@@ -261,6 +261,9 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                             onChange={(e) => checkAdmin(e.target.value)}
                                             contentBefore={<LockClosedRegular />}
                                         />
+                                        <Text size={200} style={{ color: tokens.colorNeutralForeground4, marginTop: '4px' }}>
+                                            {t('common.admin_pass_help') || "Zadejte heslo 'Admin123' pro odemčení pokročilých nastavení. Toto pole neslouží ke změně vašeho uživatelského hesla."}
+                                        </Text>
                                     </div>
                                 )}
 

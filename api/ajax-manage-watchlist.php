@@ -36,24 +36,27 @@ if (!$userId) {
 }
 
 // 2. DB Connection
+require_once __DIR__ . '/config.php';
 try {
-    $paths = [__DIR__.'/env.local.php', __DIR__.'/php/env.local.php', __DIR__.'/../env.local.php'];
-    foreach($paths as $p) { if(file_exists($p)) { require_once $p; break; } }
-    
-    if (!defined('DB_HOST')) throw new Exception("DB Config missing");
-    
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
+    $pdo = get_pdo();
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     
     // Ensure table exists (Auto-migration)
-    $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
-        user_id INT NOT NULL,
-        ticker VARCHAR(20) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (user_id, ticker)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if ($driver === 'pgsql') {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
+            user_id INT NOT NULL,
+            ticker VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, ticker)
+        )");
+    } else {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS watch (
+            user_id INT NOT NULL,
+            ticker VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, ticker)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
 
 } catch (Exception $e) {
     echo json_encode(['success'=>false, 'error'=>'DB Error: '.$e->getMessage()]);
@@ -97,25 +100,32 @@ try {
         // Remove all for this user first (simple sync)
         $msg = "Updated";
         
-        // Strategy: 
-        // 1. Get current owned tickers (we should enforce watching owned?) 
-        // -> User req: "Automaticky se mu dá do sledování jen to co má v portofilu."
-        // This usually means "Display owned by default", but if we save to DB, we can just save what user selected.
-        // Let's rely on frontend sending the Full List (owned + explicit watched).
-        
         $del = $pdo->prepare("DELETE FROM watch WHERE user_id = ?");
         $del->execute([$userId]);
         
         if (!empty($tickers)) {
-            $ins = $pdo->prepare("INSERT INTO live_quotes (id, status) VALUES (?, 'active') ON DUPLICATE KEY UPDATE status='active'"); 
-            // Ensure they exist in live quotes just in case (e.g. if ID was manually typed) - though select UI handles this.
-            
-            $insWatch = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
-            
             foreach ($tickers as $t) {
                 $t = strtoupper(trim($t));
                 if (!$t) continue;
-                $insWatch->execute([$userId, $t]);
+                
+                // Ensure they exist in live quotes just in case
+                $chkQ = $pdo->prepare("SELECT 1 FROM live_quotes WHERE id = ? LIMIT 1");
+                $chkQ->execute([$t]);
+                if (!$chkQ->fetchColumn()) {
+                    $insQ = $pdo->prepare("INSERT INTO live_quotes (id, status) VALUES (?, 'active')");
+                    $insQ->execute([$t]);
+                } else {
+                    $updQ = $pdo->prepare("UPDATE live_quotes SET status = 'active' WHERE id = ?");
+                    $updQ->execute([$t]);
+                }
+                
+                // Check if exists in watch
+                $chkW = $pdo->prepare("SELECT 1 FROM watch WHERE user_id = ? AND ticker = ? LIMIT 1");
+                $chkW->execute([$userId, $t]);
+                if (!$chkW->fetchColumn()) {
+                    $insW = $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?)");
+                    $insW->execute([$userId, $t]);
+                }
             }
         }
         
@@ -129,8 +139,7 @@ try {
         $rawList = preg_split('/[\s,]+/', $text, -1, PREG_SPLIT_NO_EMPTY);
         $added = 0;
         
-        $insQuote = $pdo->prepare("INSERT INTO live_quotes (id, asset_type, status, last_fetched) VALUES (?, ?, 'active', NULL) ON DUPLICATE KEY UPDATE asset_type=VALUES(asset_type)");
-        $insWatch = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
+        $pdo->beginTransaction();
         
         foreach ($rawList as $t) {
             $t = strtoupper(trim($t));
@@ -140,10 +149,29 @@ try {
                 $knownCrypto = ['BTC','ETH','SOL','ADA','DOT','XRP','LTC','DOGE','USDT'];
                 if (in_array($t, $knownCrypto)) $thisType = 'crypto';
             }
-            $insQuote->execute([$t, $thisType]);
-            $insWatch->execute([$userId, $t]);
+            
+            // Check if exists in live_quotes
+            $chkQ = $pdo->prepare("SELECT 1 FROM live_quotes WHERE id = ? LIMIT 1");
+            $chkQ->execute([$t]);
+            if (!$chkQ->fetchColumn()) {
+                $insQ = $pdo->prepare("INSERT INTO live_quotes (id, asset_type, status, last_fetched) VALUES (?, ?, 'active', NULL)");
+                $insQ->execute([$t, $thisType]);
+            } else {
+                $updQ = $pdo->prepare("UPDATE live_quotes SET asset_type = ?, status = 'active' WHERE id = ?");
+                $updQ->execute([$thisType, $t]);
+            }
+            
+            // Check if exists in watch
+            $chkW = $pdo->prepare("SELECT 1 FROM watch WHERE user_id = ? AND ticker = ? LIMIT 1");
+            $chkW->execute([$userId, $t]);
+            if (!$chkW->fetchColumn()) {
+                $insW = $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?)");
+                $insW->execute([$userId, $t]);
+            }
             $added++;
         }
+        
+        $pdo->commit();
         echo json_encode(['success'=>true, 'message'=>"Přidáno $added tickerů."]);
 
     } elseif ($action === 'get_candidates') {
@@ -179,41 +207,30 @@ try {
 
     } elseif ($action === 'batch_update') {
         // Hromadná update z modálu (checkboxy)
-        $tickers = $input['tickers'] ?? []; // seznam tickerů, které MAJÍ BÝT sledovány
-        
-        // 1. Smažeme všechny kromě vlastněných? Ne, to je nebezpečné.
-        // Lepší přístup: User posílá seznam změn, nebo prostě seznam ID, které chce mít checknuté.
-        // Uděláme to jako "Set state": To co pošle, bude watched. Co nepošle (a není v tom seznamu loading), neřešíme?
-        // Ne, modal pošle seznam změn (added, removed) nebo full snapshot.
-        // Pro jednoduchost: Modal pošle seznam 'watched_tickers' (jen ty co uživatel chce).
-        // My ale musíme dát pozor, abychom nesmazali ty, co nebyly v modálu načtené (kvůli limitu).
-        
-        // Bezpečnější varianta: 'changes' array
         $changes = $input['changes'] ?? []; // [{ticker: 'AAA', state: true/false}, ...]
         
-        $ins = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
-        $del = $pdo->prepare("DELETE FROM watch WHERE user_id = ? AND ticker = ?");
+        $pdo->beginTransaction();
         
         $count = 0;
         foreach ($changes as $ch) {
             $t = $ch['ticker'];
             $s = $ch['state']; // true = add, false = remove
             
-            // Check ownership protection?
-            // (Front-end should handle disabling checkbox, but backend safety:)
-            /*
-            $isOwned = $pdo->query("SELECT COUNT(*) FROM transactions WHERE user_id=$userId AND id='$t'")->fetchColumn() > 0;
-            if ($isOwned && !$s) continue; // Cannot unwatch owned
-            */
-            
             if ($s) {
-                $ins->execute([$userId, $t]);
+                $chkW = $pdo->prepare("SELECT 1 FROM watch WHERE user_id = ? AND ticker = ? LIMIT 1");
+                $chkW->execute([$userId, $t]);
+                if (!$chkW->fetchColumn()) {
+                    $ins = $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?)");
+                    $ins->execute([$userId, $t]);
+                }
             } else {
+                $del = $pdo->prepare("DELETE FROM watch WHERE user_id = ? AND ticker = ?");
                 $del->execute([$userId, $t]);
             }
             $count++;
         }
         
+        $pdo->commit();
         echo json_encode(['success'=>true, 'message'=>"Uloženo $count změn."]);
         
     } elseif ($action === 'toggle') {
@@ -231,9 +248,8 @@ try {
             $pdo->prepare("DELETE FROM watch WHERE user_id = ? AND ticker = ?")->execute([$userId, $ticker]);
             $op = 'removed';
         } else {
-            // Add (ensure quote exists first?)
-            // Assuming quote exists if we clicked on it in market view
-            $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)")->execute([$userId, $ticker]);
+            // Add
+            $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?)")->execute([$userId, $ticker]);
             $op = 'added';
         }
         echo json_encode(['success'=>true, 'operation'=>$op]);

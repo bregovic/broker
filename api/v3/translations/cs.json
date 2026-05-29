@@ -7,7 +7,8 @@
         "error": "Chyba",
         "done": "Dokončeno",
         "refresh": "Obnovit",
-        "admin_pass": "Administrátorské heslo (k odemčení správy)"
+        "admin_pass": "Administrátorské heslo (k odemčení správy)",
+        "admin_pass_help": "Zadejte heslo 'Admin123' pro odemčení pokročilých nastavení. Toto pole neslouží ke změně vašeho uživatelského hesla."
     },
     "nav": {
         "dashboard": "Přehled",

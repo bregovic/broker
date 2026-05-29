@@ -1,6 +1,6 @@
 <?php
 /**
- * AJAX endpoint pro uložení manuální ceny do broker_live_quotes
+ * AJAX endpoint pro uložení manuální ceny do broker_live_quotes / live_quotes
  */
 session_start();
 
@@ -15,34 +15,13 @@ if (!$isLoggedIn) {
 }
 
 // Database connection
-$pdo = null;
+require_once __DIR__ . '/config.php';
 try {
-    $paths = [
-        __DIR__ . '/../env.local.php',
-        __DIR__ . '/env.local.php',
-        __DIR__ . '/php/env.local.php',
-    ];
-    foreach ($paths as $p) {
-        if (file_exists($p)) {
-            require_once $p;
-            break;
-        }
-    }
-    if (defined('DB_HOST')) {
-        $pdo = new PDO(
-            "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8",
-            DB_USER,
-            DB_PASS,
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            ]
-        );
-    }
+    $pdo = get_pdo();
 } catch (Exception $e) {
     http_response_code(500);
     header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'error' => 'Database connection failed']);
+    echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
 }
 
@@ -71,26 +50,40 @@ if (empty($ticker) || $price <= 0 || empty($currency)) {
 }
 
 try {
-    // Insert or update in broker_live_quotes
-    $sql = "INSERT INTO broker_live_quotes 
-                (id, source, current_price, currency, company_name, last_fetched, status)
-            VALUES 
-                (:ticker, 'manual', :price, :currency, :company, NOW(), 'active')
-            ON DUPLICATE KEY UPDATE
-                current_price = :price,
-                currency = :currency,
-                company_name = :company,
-                last_fetched = NOW(),
-                source = 'manual',
-                status = 'active'";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':ticker' => $ticker,
-        ':price' => $price,
-        ':currency' => $currency,
-        ':company' => $companyName
-    ]);
+    // Determine if we should use 'live_quotes' or 'broker_live_quotes'
+    $tableName = 'live_quotes';
+    try {
+        $pdo->query("SELECT 1 FROM live_quotes LIMIT 1");
+    } catch (Exception $ex) {
+        $tableName = 'broker_live_quotes';
+    }
+
+    // Check if ticker already exists in the table
+    $stmtCheck = $pdo->prepare("SELECT 1 FROM $tableName WHERE id = ? LIMIT 1");
+    $stmtCheck->execute([$ticker]);
+    $exists = (bool)$stmtCheck->fetchColumn();
+
+    if ($exists) {
+        // Update
+        $sql = "UPDATE $tableName SET 
+                    current_price = ?,
+                    currency = ?,
+                    company_name = ?,
+                    last_fetched = NOW(),
+                    source = 'manual',
+                    status = 'active'
+                WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$price, $currency, $companyName, $ticker]);
+    } else {
+        // Insert
+        $sql = "INSERT INTO $tableName 
+                    (id, source, current_price, currency, company_name, last_fetched, status)
+                VALUES 
+                    (?, 'manual', ?, ?, ?, NOW(), 'active')";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ticker, $price, $currency, $companyName]);
+    }
     
     header('Content-Type: application/json');
     echo json_encode([

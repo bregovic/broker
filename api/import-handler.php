@@ -42,21 +42,9 @@ if (!$currentUserId) {
 }
 
 /* ===================== DB ===================== */
+require_once __DIR__ . '/config.php';
 try {
-    $paths = [
-        __DIR__.'/env.local.php', 
-        __DIR__.'/../env.local.php', 
-        __DIR__.'/php/env.local.php',
-        '../env.local.php',
-        'php/env.local.php',
-        '../php/env.local.php'
-    ];
-    foreach ($paths as $p) { if (file_exists($p)) { require_once $p; break; } }
-    if (!defined('DB_HOST')) throw new Exception('DB config nenalezen');
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
+    $pdo = get_pdo();
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['success'=>false,'error'=>'Chyba DB: '.$e->getMessage()]);
@@ -66,8 +54,14 @@ try {
 /* ===================== Detect fingerprint column ===================== */
 $hasFingerprint = false;
 try {
-    $res = $pdo->query("SHOW COLUMNS FROM transactions LIKE 'fingerprint'");
-    $hasFingerprint = (bool)$res->fetch();
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    if ($driver === 'pgsql') {
+        $stmtCol = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='fingerprint'");
+        $stmtCol->execute();
+        $hasFingerprint = (bool)$stmtCol->fetchColumn();
+    } else {
+        $res = $pdo->query("SHOW COLUMNS FROM transactions LIKE 'fingerprint'");
+        $hasFingerprint = (bool)$res->fetch();
 } catch (Exception $e) {
     $hasFingerprint = false;
 }
@@ -108,12 +102,32 @@ function fetchCnbAndStore(PDO $pdo, string $date, string $currency) {
             if ($amount>1) $val = $val/$amount;
             
             try {
-                $ins = $pdo->prepare("INSERT INTO rates (date,currency,rate,amount,source) VALUES (?,?,?,?, 'CNB') ON DUPLICATE KEY UPDATE rate=VALUES(rate), amount=VALUES(amount), source='CNB'");
-                $ins->execute([$date, $currency, $val, 1]);
+                // Check if rate already exists for this currency and date
+                $check = $pdo->prepare("SELECT 1 FROM rates WHERE currency=? AND date=? LIMIT 1");
+                $check->execute([$currency, $date]);
+                $exists = (bool)$check->fetchColumn();
+
+                if ($exists) {
+                    // Update
+                    try {
+                        $upd = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source='CNB' WHERE currency=? AND date=?");
+                        $upd->execute([$val, 1, $currency, $date]);
+                    } catch (Exception $e) {
+                        $upd = $pdo->prepare("UPDATE rates SET rate=?, amount=? WHERE currency=? AND date=?");
+                        $upd->execute([$val, 1, $currency, $date]);
+                    }
+                } else {
+                    // Insert
+                    try {
+                        $ins = $pdo->prepare("INSERT INTO rates (date,currency,rate,amount,source) VALUES (?,?,?,?, 'CNB')");
+                        $ins->execute([$date, $currency, $val, 1]);
+                    } catch (Exception $e) {
+                        $ins = $pdo->prepare("INSERT INTO rates (date,currency,rate,amount) VALUES (?,?,?,?)");
+                        $ins->execute([$date, $currency, $val, 1]);
+                    }
+                }
             } catch (Exception $e) {
-                 // Fallback without source if column missing
-                 $ins = $pdo->prepare("INSERT INTO rates (date,currency,rate,amount) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate), amount=VALUES(amount)");
-                 $ins->execute([$date, $currency, $val, 1]);
+                 error_log("CNB Store rate failed: " . $e->getMessage());
             }
             return $val;
         }
@@ -235,25 +249,33 @@ function saveTickerMapping(PDO $pdo, array $txData): void {
         }
         
         // Insert or update
-        $sql = "INSERT INTO ticker_mapping 
-                    (ticker, company_name, isin, currency, alias_of, status, last_verified)
-                VALUES 
-                    (:ticker, :company, :isin, :currency, :alias_of, 'needs_review', NOW())
-                ON DUPLICATE KEY UPDATE
-                    company_name = COALESCE(NULLIF(:company, ''), company_name),
-                    isin = COALESCE(NULLIF(:isin, ''), isin),
-                    currency = COALESCE(NULLIF(:currency, ''), currency),
-                    alias_of = COALESCE(alias_of, :alias_of),
-                    last_verified = NOW()";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':ticker' => $ticker,
-            ':company' => $companyName,
-            ':isin' => $isin,
-            ':currency' => $currency,
-            ':alias_of' => $aliasOf
-        ]);
+        try {
+            // Check if mapping already exists
+            $stmtCheck = $pdo->prepare("SELECT company_name, isin, currency, alias_of FROM ticker_mapping WHERE ticker = ? LIMIT 1");
+            $stmtCheck->execute([$ticker]);
+            $existing = $stmtCheck->fetch();
+
+            if ($existing) {
+                // Update
+                $sql = "UPDATE ticker_mapping SET 
+                            company_name = COALESCE(NULLIF(?, ''), company_name),
+                            isin = COALESCE(NULLIF(?, ''), isin),
+                            currency = COALESCE(NULLIF(?, ''), currency),
+                            alias_of = COALESCE(alias_of, ?),
+                            last_verified = NOW()
+                        WHERE ticker = ?";
+                $pdo->prepare($sql)->execute([$companyName, $isin, $currency, $aliasOf, $ticker]);
+            } else {
+                // Insert
+                $sql = "INSERT INTO ticker_mapping 
+                            (ticker, company_name, isin, currency, alias_of, status, last_verified)
+                        VALUES 
+                            (?, ?, ?, ?, ?, 'needs_review', NOW())";
+                $pdo->prepare($sql)->execute([$ticker, $companyName, $isin, $currency, $aliasOf]);
+            }
+        } catch (Exception $e) {
+            error_log("ticker_mapping store failed for $ticker: " . $e->getMessage());
+        }
         
         if ($aliasOf) {
             error_log("Ticker alias detected: $ticker -> $aliasOf (based on " . 
@@ -296,18 +318,31 @@ function ensureTickerMeta(PDO $pdo, string $ticker, string $productType) {
     // Determine asset_type (lowercase for DB consistency)
     $assetType = (strcasecmp($productType, 'Crypto') === 0) ? 'crypto' : 'stock';
     
-    // Insert or update type
-    // We rely on rebuild_table.php having set Primary Key on 'id'
     try {
-        $sql = "INSERT INTO live_quotes (id, asset_type, last_fetched, status) 
-                VALUES (?, ?, NOW(), 'active')
-                ON DUPLICATE KEY UPDATE 
-                    asset_type = IF(asset_type IS NULL OR asset_type = 'stock', VALUES(asset_type), asset_type)";
-        // Logic: If existing is 'stock' and new is 'crypto', update it. If existing is 'crypto', keep it.
-        
-        $pdo->prepare($sql)->execute([$ticker, $assetType]);
+        // 1. Check if the ticker exists in live_quotes
+        $stmt = $pdo->prepare("SELECT asset_type FROM live_quotes WHERE id = ? OR ticker = ? LIMIT 1");
+        $stmt->execute([$ticker, $ticker]);
+        $existingType = $stmt->fetchColumn();
+
+        if ($existingType === false) {
+            // Ticker does not exist, insert it!
+            // In PostgreSQL, live_quotes has 'ticker' column, and 'id' column synced via trigger.
+            // Insert into both columns to be perfectly safe and compatible
+            $sql = "INSERT INTO live_quotes (id, ticker, asset_type, last_fetched, status) 
+                    VALUES (?, ?, ?, NOW(), 'active')";
+            $pdo->prepare($sql)->execute([$ticker, $ticker, $assetType]);
+        } else {
+            // Ticker exists, update asset_type if necessary (e.g. from 'stock' to 'crypto')
+            if ($existingType === null || $existingType === 'stock' || $existingType === '') {
+                if ($assetType === 'crypto') {
+                    $sql = "UPDATE live_quotes SET asset_type = ? WHERE id = ? OR ticker = ?";
+                    $pdo->prepare($sql)->execute([$assetType, $ticker, $ticker]);
+                }
+            }
+        }
     } catch (Exception $e) {
         // Silent fail, not critical for import flow
+        error_log("ensureTickerMeta failed for $ticker: " . $e->getMessage());
     }
 }
 
@@ -326,11 +361,17 @@ function addToWatchlist(PDO $pdo, int $userId, string $ticker) {
             ticker VARCHAR(20) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, ticker)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        )");
         
-        // Insert or ignore if already exists
-        $stmt = $pdo->prepare("INSERT IGNORE INTO watch (user_id, ticker) VALUES (?, ?)");
-        $stmt->execute([$userId, $ticker]);
+        // Check if watch record already exists
+        $check = $pdo->prepare("SELECT 1 FROM watch WHERE user_id = ? AND ticker = ? LIMIT 1");
+        $check->execute([$userId, $ticker]);
+        $exists = (bool)$check->fetchColumn();
+
+        if (!$exists) {
+            $stmt = $pdo->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?)");
+            $stmt->execute([$userId, $ticker]);
+        }
     } catch (Exception $e) {
         // Silent fail, watchlist is not critical
         error_log("addToWatchlist failed for $ticker: " . $e->getMessage());
