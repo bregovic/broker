@@ -9,14 +9,10 @@ header("Cache-Control: no-cache");
 
 session_start();
 
-$paths = [__DIR__ . '/env.local.php', __DIR__ . '/env.php', __DIR__ . '/../env.php'];
-$loaded = false;
-foreach ($paths as $p) { if (file_exists($p)) { require_once $p; $loaded = true; break; } }
-if (!$loaded) { echo json_encode(['success' => false, 'error' => 'env not found']); exit; }
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = get_pdo();
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => 'DB connection failed']);
     exit;
@@ -84,10 +80,10 @@ if ($action === 'list') {
 
     // Get comments with their attachments
     $stmt = $pdo->prepare("
-        SELECT c.*, 
-               GROUP_CONCAT(DISTINCT ca.file_path SEPARATOR '||') as attachments,
-               (SELECT GROUP_CONCAT(CONCAT(reaction_type, ':', user_id) SEPARATOR '||') 
-                FROM changerequest_comment_reactions 
+        SELECT c.*,
+               string_agg(DISTINCT ca.file_path, '||') as attachments,
+               (SELECT string_agg(reaction_type || ':' || user_id::text, '||')
+                FROM changerequest_comment_reactions
                 WHERE comment_id = c.id) as reaction_data
         FROM changerequest_comments c
         LEFT JOIN changerequest_comment_attachments ca ON ca.comment_id = c.id

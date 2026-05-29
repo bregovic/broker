@@ -62,23 +62,17 @@ function resolveRole() {
     $userId = resolveUserId();
     if ($userId) {
         // Load from database if available
-        $envPaths = [__DIR__ . '/env.local.php', __DIR__ . '/env.php', __DIR__ . '/../env.php'];
-        foreach ($envPaths as $p) {
-            if (file_exists($p)) {
-                require_once $p;
-                try {
-                    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS);
-                    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
-                    $stmt->execute([$userId]);
-                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                    if ($row && isset($row['role'])) {
-                        return $row['role'];
-                    }
-                } catch (Exception $e) {
-                    // Fallback if DB query fails
-                }
-                break;
+        require_once __DIR__ . '/config.php';
+        try {
+            $pdo = get_pdo();
+            $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && isset($row['role'])) {
+                return $row['role'];
             }
+        } catch (Exception $e) {
+            // Fallback if DB query fails
         }
     }
     
@@ -102,16 +96,10 @@ $assignedCount = 0;
 if ($id) {
     // We already have $pdo if resolveRole connected to DB, but let's ensure it.
     if (!isset($pdo)) {
-        $envPaths = [__DIR__ . '/env.local.php', __DIR__ . '/env.php', __DIR__ . '/../env.php'];
-        foreach ($envPaths as $p) {
-            if (file_exists($p)) {
-                require_once $p;
-                try {
-                    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS);
-                } catch (Exception $e) { }
-                break;
-            }
-        }
+        require_once __DIR__ . '/config.php';
+        try {
+            $pdo = get_pdo();
+        } catch (Exception $e) { }
     }
     if (isset($pdo)) {
         try {

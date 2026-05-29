@@ -1,9 +1,10 @@
-name: Auto Deploy to Investyx
+name: Deploy to FTP (hollyhop.cz) — DISABLED auto-run
 
+# The canonical deployment is Railway (PostgreSQL) at https://investyx.up.railway.app.
+# This FTP deploy to hollyhop.cz/www/investyx (legacy Wedos/MySQL copy) is kept for
+# reference but no longer runs on push — trigger manually only if you really need it.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   deploy:

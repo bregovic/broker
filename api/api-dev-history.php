@@ -7,14 +7,10 @@
 header("Content-Type: application/json; charset=utf-8");
 header("Cache-Control: no-cache");
 
-$paths = [__DIR__ . '/env.local.php', __DIR__ . '/env.php'];
-$loaded = false;
-foreach ($paths as $p) { if (file_exists($p)) { require_once $p; $loaded = true; break; } }
-if (!$loaded) { echo json_encode(['success' => false, 'error' => 'env not found']); exit; }
+require_once __DIR__ . '/config.php';
 
 try {
-    $pdo = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = get_pdo();
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => 'DB connection failed']);
     exit;
@@ -27,8 +23,8 @@ if ($action === 'list') {
     $stmt = $pdo->query("
         SELECT 
             id, date, title, description, category, related_task_id,
-            DATE_FORMAT(date, '%Y-%m') as month_key,
-            DATE_FORMAT(date, '%M %Y') as month_label
+            to_char(date, 'YYYY-MM') as month_key,
+            to_char(date, 'FMMonth YYYY') as month_label
         FROM development_history 
         ORDER BY date DESC, id DESC
     ");

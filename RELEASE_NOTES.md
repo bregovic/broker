@@ -25,6 +25,20 @@
   production schema (`changerequest_*`, `development_history`) — needs schema
   decision before fixing. ~23 dead `broker_*` legacy files pending cleanup.
 
+## [Unreleased] - 2026-05-29 (c)
+### Fixed — Helpdesk & Dev History were non-functional on Railway (missing schema)
+- The production PostgreSQL DB never had the helpdesk/dev-history tables (only
+  core trading tables existed), so RequestsPage / comments / dev-history failed.
+- Added `api/sql/helpdesk_schema.sql` — idempotent PG schema for
+  `changerequest_log`, `_attachments`, `_history`, `_comments`,
+  `_comment_attachments`, `_comment_reactions`, and `development_history`
+  (ported from the MySQL `setup_*.php` scripts + consolidated ALTERs).
+  Applied to the live Railway DB; all 7 tables verified.
+- `api-comments.php`: `get_pdo()` + `GROUP_CONCAT(... SEPARATOR)` → `string_agg`.
+- `api-dev-history.php`: `get_pdo()` + `DATE_FORMAT` → `to_char`; added `date` column.
+- `ajax-get-user.php`: `get_pdo()` (both connection sites).
+- `api-changerequests.php` already used `get_pdo()`; works now that tables exist.
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.
