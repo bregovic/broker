@@ -22,42 +22,11 @@ function resolveUserId() {
 }
 
 function resolveRate($pdo, string $date, string $currency) {
-    $currency = strtoupper(trim($currency));
-    if ($currency === 'CZK' || $currency === '') return 1.0;
-
-    $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
-    $inTx = $pdo->inTransaction();
-
-    // Run one rate query, savepoint-protected so a failure can't abort the
-    // surrounding import transaction on PostgreSQL. `rate` is CZK per `amount`
-    // units of the currency (CNB convention), so the per-unit rate is rate/amount.
-    $tryQuery = function (string $sql, array $params) use ($pdo, $driver, $inTx) {
-        $sp = ($driver === 'pgsql' && $inTx);
-        if ($sp) { try { $pdo->exec("SAVEPOINT rr_sp"); } catch (\Exception $e) { $sp = false; } }
-        try {
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if ($sp) { $pdo->exec("RELEASE SAVEPOINT rr_sp"); }
-            if ($row && (float)$row['rate'] > 0) {
-                $amt = (float)($row['amount'] ?? 1);
-                return $amt > 0 ? (float)$row['rate'] / $amt : (float)$row['rate'];
-            }
-        } catch (\Exception $e) {
-            if ($sp) { try { $pdo->exec("ROLLBACK TO SAVEPOINT rr_sp"); } catch (\Exception $e2) {} }
-        }
-        return null;
-    };
-
-    // 1) Latest rate on or before the transaction date (works on MySQL + PostgreSQL).
-    $r = $tryQuery("SELECT rate, amount FROM rates WHERE currency=? AND date<=? ORDER BY date DESC LIMIT 1", [$currency, $date]);
-    if ($r !== null) return $r;
-
-    // 2) Fallback for dates before our rate coverage: earliest available rate.
-    $r = $tryQuery("SELECT rate, amount FROM rates WHERE currency=? ORDER BY date ASC LIMIT 1", [$currency]);
-    if ($r !== null) return $r;
-
-    return 1.0;
+    // Self-healing: reads the rates table and, when we have no rate for this date
+    // yet, auto-fetches it from ČNB (single-currency endpoint) and caches it.
+    require_once __DIR__ . '/../rate_sync.php';
+    $r = ensure_rate($pdo, $currency, $date);
+    return $r ?? 1.0;
 }
 
 // Error reporting only for debugging phase

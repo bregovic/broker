@@ -52,8 +52,11 @@ all 2022 USD transactions.
   *single-currency* endpoint (`vybrane.txt?mena=USD`, which carries the code per
   row → immune to basket changes), then recomputed `ex_rate`/`amount_czk` for all
   631 non-CZK transactions. Verified: 2022-10-31 USD = 24.697; IBM gross 19 698 → 7 990.
-- **TODO (durable):** `cnb-import-year.php` is still fragile — do NOT re-run it for
-  2022. Replace historical rate import with the single-currency endpoint.
+- **Durable fix (done):** `rate_sync.php` now has `ensure_rate()` (self-healing:
+  auto-fetches a missing rate from ČNB's single-currency endpoint and caches it) —
+  used by the import's `resolveRate()`. New `import-rates.php?mena=USD&od=2019&do=2026`
+  is the robust historical importer. `cnb-import-year.php` now skips column-shifted
+  rows so it can't corrupt data again.
 
 ## Data conventions (verified)
 - **`trans_type` is stored UPPERCASE**: `DIVIDEND` (428), `BUY` (155), `SELL` (47).

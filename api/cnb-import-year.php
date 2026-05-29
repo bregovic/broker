@@ -70,6 +70,12 @@ try {
         $parts = explode('|', $line);
         if (count($parts) < 2) continue;
 
+        // Guard against ČNB mid-year basket changes (e.g. RUB removed in 2022):
+        // if a row's width differs from the header, its values are column-shifted
+        // and would map to the wrong currency — skip rather than corrupt the data.
+        // Use import-rates.php (single-currency endpoint) for reliable history.
+        if (count($parts) !== $colsCount) continue;
+
         $dateStr = trim($parts[0]);
         $dt = DateTime::createFromFormat('d.m.Y', $dateStr);
         if (!$dt) continue;
