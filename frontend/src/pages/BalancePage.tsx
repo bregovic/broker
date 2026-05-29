@@ -98,6 +98,31 @@ export const BalancePage = () => {
             if (res.data.success) {
                 setItems(res.data.data);
                 setSummary(res.data.summary);
+
+                // Auto-fetch missing prices: find any open positions that have zero or null current price
+                const missingPriceItems = res.data.data.filter((item: PortfolioItem) => !item.current_price || Number(item.current_price) <= 0);
+                if (missingPriceItems.length > 0) {
+                    // Fire background fetch requests for each missing ticker
+                    Promise.all(
+                        missingPriceItems.map(async (item: PortfolioItem) => {
+                            try {
+                                await axios.post('/api/ajax-fetch-history.php', { ticker: item.ticker, action: 'fetch', period: 'smart' });
+                            } catch (e) {
+                                console.error(`Failed to auto-fetch price for ${item.ticker}`, e);
+                            }
+                        })
+                    ).then(() => {
+                        // After fetches are completed or started, wait 3 seconds and silently refresh the portfolio table
+                        setTimeout(() => {
+                            axios.get(`/api/api-portfolio.php?groupBy=${groupBy}`).then(refreshRes => {
+                                if (refreshRes.data.success) {
+                                    setItems(refreshRes.data.data);
+                                    setSummary(refreshRes.data.summary);
+                                }
+                            }).catch(console.error);
+                        }, 3000);
+                    });
+                }
             } else {
                 setError(res.data.error || 'Failed to load');
             }
