@@ -62,8 +62,9 @@ try {
 
     // 3. Fetch Transactions
     try {
-        $sql="SELECT trans_id, date, ticker, amount, price, ex_rate, currency, amount_czk, platform, product_type, trans_type 
-              FROM transactions WHERE user_id = ? ORDER BY date ASC";
+        $sql="SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_czk, platform, product_type, trans_type
+              FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
+              WHERE tr.user_id = ? ORDER BY date ASC";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$userId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

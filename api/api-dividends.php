@@ -99,15 +99,15 @@ try {
 $sql = "SELECT 
             trans_id AS id, 
             date, 
-            $tickerExpr AS ticker, 
-            trans_type AS type, 
-            amount_cur AS amount, 
-            currency, 
-            amount_czk, 
-            platform, 
-            '' AS notes 
-        FROM transactions 
-        WHERE user_id = ? AND UPPER(trans_type) IN ('DIVIDEND', 'WITHHOLDING', 'TAX')
+            COALESCE(a.canonical, $tickerExpr) AS ticker,
+            trans_type AS type,
+            amount_cur AS amount,
+            currency,
+            amount_czk,
+            platform,
+            '' AS notes
+        FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
+        WHERE tr.user_id = ? AND UPPER(trans_type) IN ('DIVIDEND', 'WITHHOLDING', 'TAX')
         ORDER BY date DESC, trans_id DESC";
 
 try {

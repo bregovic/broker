@@ -22,12 +22,12 @@ try {
     $pdo = get_pdo();
 
     // 1. Fetch Sales (ticker instead of id)
-    $sql = "SELECT trans_id, date, ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, platform, fees
-            FROM transactions 
-            WHERE user_id = ?
-            AND UPPER(trans_type) = 'SELL'
-            AND (product_type = 'Stock' OR product_type = 'Crypto')
-            ORDER BY date DESC, trans_id DESC LIMIT 2000";
+    $sql = "SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, platform, fees
+            FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
+            WHERE tr.user_id = ?
+            AND UPPER(tr.trans_type) = 'SELL'
+            AND (tr.product_type = 'Stock' OR tr.product_type = 'Crypto')
+            ORDER BY tr.date DESC, tr.trans_id DESC LIMIT 2000";
             
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$userId]);
@@ -56,11 +56,11 @@ try {
         $ticker = $sale['ticker'];
         
         // Helper calculation for average price (Postgres friendly)
-        $sqlBuy = "SELECT date, amount, price, amount_cur, amount_czk, ex_rate, fees
-                   FROM transactions
-                   WHERE user_id = ? AND ticker = ? AND UPPER(trans_type) = 'BUY'
-                   AND date <= ? AND platform = ?
-                   ORDER BY date ASC";
+        $sqlBuy = "SELECT tr.date, tr.amount, tr.price, tr.amount_cur, tr.amount_czk, tr.ex_rate, tr.fees
+                   FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
+                   WHERE tr.user_id = ? AND COALESCE(a.canonical, tr.ticker) = ? AND UPPER(tr.trans_type) = 'BUY'
+                   AND tr.date <= ? AND tr.platform = ?
+                   ORDER BY tr.date ASC";
         $stmtB = $pdo->prepare($sqlBuy);
         $stmtB->execute([$userId, $ticker, $sale['date'], $sale['platform']]);
         $purchases = $stmtB->fetchAll(PDO::FETCH_ASSOC);

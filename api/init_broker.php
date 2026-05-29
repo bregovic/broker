@@ -26,7 +26,14 @@ try {
     )");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS transactions (trans_id SERIAL PRIMARY KEY)");
-    
+
+    // Ticker aliases: old/changed symbol -> current (canonical). Used by reports.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ticker_aliases (
+        alias VARCHAR(20) PRIMARY KEY,
+        canonical VARCHAR(20) NOT NULL,
+        note VARCHAR(255)
+    )");
+
     // 2. Safely add columns to live_quotes
     $pdo->exec("CREATE TABLE IF NOT EXISTS live_quotes (ticker VARCHAR(20) PRIMARY KEY)");
     

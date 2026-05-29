@@ -66,6 +66,16 @@
 - `api-portfolio.php` calls it so the Balance page values holdings with a current
   CZK rate instead of the last imported one (e.g. USD 21.333 from March → 20.851).
 
+## [Unreleased] - 2026-05-29 (g)
+### Added — ticker aliases (unify renamed symbols in reports)
+- New `ticker_aliases (alias -> canonical)` table; seeded GOLD -> B (Barrick Gold
+  ticker change). Created in prod + added to `init_broker.php`.
+- `api-portfolio.php`, `api-pnl.php`, `api-dividends.php` now resolve the report
+  ticker via `LEFT JOIN ticker_aliases ... COALESCE(canonical, ticker)`, so a
+  renamed security is aggregated as one holding and P&L matches sells under the
+  new ticker to buys under the old one. Verified: GOLD+B unify under B.
+- Follow-up: auto-detect aliases from statement ISIN (pending ISIN-in-data check).
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.
