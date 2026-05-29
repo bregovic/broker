@@ -4,6 +4,7 @@
 > Supporting standards live in `.agent/`:
 > - [`.agent/FORM_STANDARD.md`](.agent/FORM_STANDARD.md) — UI, forms & mobile layout rules.
 > - [`.agent/SOP.md`](.agent/SOP.md) — how to make a change safely (workflow + checklist).
+> - [`.agent/DB_STATE.md`](.agent/DB_STATE.md) — **verified prod schema, data conventions & known gaps. Read before touching the DB.**
 >
 > _Last reviewed: 2026-05-29. Keep this header date current when you make structural changes._
 
