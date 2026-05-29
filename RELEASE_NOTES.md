@@ -48,6 +48,16 @@
   non-existent `broker_live_quotes.track_history`). Mirrors the proven
   `toggle` action in `ajax-manage-watchlist.php`.
 
+## [Unreleased] - 2026-05-29 (e)
+### Fixed — import mangled thousands separators (P&L showed fake losses)
+- `AbstractParser::parseNumber` always did `str_replace(',', '.')`, so a US-format
+  amount like `1,267.00` became `1.267` — values ≥ 1000 were imported ~1000× too
+  small. This corrupted large SELL amounts → P&L showed huge fabricated losses
+  (e.g. INTC sold at "$0.036" instead of "$36"). Buys/dividends under 1000 were fine.
+- parseNumber now detects US (`1,267.00`) vs European (`1.267,50`) formats by
+  separator position and treats a lone comma with 3 trailing digits as thousands.
+- Re-import the affected statements to correct the data.
+
 ## [v2.1.0] - 2026-03-31
 ### Modernization & Railway Deployment
 - **Core Refactoring**: Completely overhauled the backend to support PostgreSQL and environment-based configuration via `DATABASE_URL`.

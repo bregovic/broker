@@ -24,9 +24,32 @@ abstract class AbstractParser {
      */
     protected function parseNumber($val): ?float {
         if ($val === null || $val === '') return null;
-        $val = str_replace(["\xc2\xa0", ' '], '', $val); // Smazat mezery
-        $val = str_replace(',', '.', $val); // Čárka -> Tečka
-        return (float) preg_replace('/[^0-9.-]/', '', $val);
+        // Keep only digits, separators and sign (drops spaces, NBSP, currency symbols).
+        $val = preg_replace('/[^0-9.,\-]/', '', (string)$val);
+        if ($val === '' || $val === '-') return null;
+
+        $lastComma = strrpos($val, ',');
+        $lastDot   = strrpos($val, '.');
+
+        if ($lastComma !== false && $lastDot !== false) {
+            // Both present: the RIGHTMOST separator is the decimal point.
+            if ($lastComma > $lastDot) {
+                // European "1.267,50": dots = thousands, comma = decimal
+                $val = str_replace('.', '', $val);
+                $val = str_replace(',', '.', $val);
+            } else {
+                // US "1,267.50": commas = thousands
+                $val = str_replace(',', '', $val);
+            }
+        } elseif ($lastComma !== false) {
+            // Only comma: exactly 3 trailing digits => thousands ("1,267"),
+            // otherwise treat as a decimal separator ("36,2" / "0,0362").
+            $decimals = strlen($val) - $lastComma - 1;
+            $val = ($decimals === 3) ? str_replace(',', '', $val) : str_replace(',', '.', $val);
+        }
+        // else: only a dot, or a plain integer -> already parseable
+
+        return (float) $val;
     }
 
     protected function csDateToISO(string $date): string {
