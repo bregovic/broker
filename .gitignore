@@ -15,6 +15,9 @@ api/uploads/
 api/debug_req4.php
 api/diag*.php
 
+# Dev scratch / diagnostics
+scratch/
+
 # Deployment
 deploy_out/
 deploy/.deploy-cache-*.json

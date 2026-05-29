@@ -82,7 +82,7 @@ interface DividendItem {
     id: number;
     date: string;
     ticker: string;
-    type: 'Dividend' | 'Withholding';
+    type: 'Dividend' | 'Withholding' | 'Tax';
     amount: number;
     currency: string;
     amount_czk: number;
@@ -94,9 +94,17 @@ interface DividendStats {
     total_div_czk: number;
     total_tax_czk: number;
     total_net_czk: number;
+    total_div_base: number;
+    total_tax_base: number;
+    total_net_base: number;
+    base_currency: string;
     count: number;
     by_currency: Record<string, { div: number, tax: number }>;
 }
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+    CZK: 'Kč', USD: '$', EUR: '€', GBP: '£'
+};
 
 
 
@@ -139,7 +147,7 @@ export const DividendsPage = () => {
             const val = Math.abs(item.amount_czk || 0);
             if (item.type === 'Dividend') {
                 total_div_czk += val;
-            } else if (item.type === 'Withholding') {
+            } else if (item.type === 'Withholding' || item.type === 'Tax') {
                 total_tax_czk += val;
             }
         });
@@ -157,12 +165,18 @@ export const DividendsPage = () => {
                 return prev;
             }
 
-            const base = prev || { by_currency: {} } as DividendStats;
+            const base = prev || { by_currency: {}, base_currency: 'CZK' } as DividendStats;
+            // Recalculate base currency values proportionally
+            const origDivCzk = base.total_div_czk || 1;
+            const ratio = origDivCzk > 0 ? (base.total_div_base || 0) / origDivCzk : 1;
             return {
                 ...base,
                 total_div_czk,
                 total_tax_czk,
                 total_net_czk,
+                total_div_base: total_div_czk * ratio,
+                total_tax_base: total_tax_czk * ratio,
+                total_net_base: total_net_czk * ratio,
                 count
             };
         });
@@ -184,12 +198,13 @@ export const DividendsPage = () => {
                     <Badge color="success" shape="rounded">{t('type_dividend')}</Badge> :
                     <Badge color="danger" shape="rounded">{t('type_tax')}</Badge>
             ),
+            // Note: 'Tax' type is normalized to 'Withholding' by the API, so only two display values
             compare: (a: DividendItem, b: DividendItem) => a.type.localeCompare(b.type)
         },
         {
             columnId: 'amount', renderHeaderCell: () => t('col_amount'), renderCell: (item: DividendItem) => {
                 const val = item.amount != null ? Number(item.amount) : 0;
-                return `${item.type === 'Withholding' ? '-' : ''}${Math.abs(val).toFixed(2)}`;
+                return `${(item.type === 'Withholding' || item.type === 'Tax') ? '-' : ''}${Math.abs(val).toFixed(2)}`;
             },
             compare: (a: DividendItem, b: DividendItem) => Number(a.amount) - Number(b.amount)
         },
@@ -198,11 +213,11 @@ export const DividendsPage = () => {
             compare: (a: DividendItem, b: DividendItem) => a.currency.localeCompare(b.currency)
         },
         {
-            columnId: 'amount_czk', renderHeaderCell: () => t('col_czk_gross_tax'), renderCell: (item: DividendItem) => {
+            columnId: 'amount_czk', renderHeaderCell: () => `${t('col_czk_gross_tax')} (CZK)`, renderCell: (item: DividendItem) => {
                 const val = item.amount_czk != null ? Number(item.amount_czk) : 0;
                 return (
                     <Text className={item.type === 'Dividend' ? styles.positive : styles.negative}>
-                        {item.type === 'Withholding' ? '-' : ''}{Math.abs(val).toFixed(2)}
+                        {(item.type === 'Withholding' || item.type === 'Tax') ? '-' : ''}{Math.abs(val).toFixed(2)}
                     </Text>
                 );
             },
@@ -235,19 +250,19 @@ export const DividendsPage = () => {
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('div_gross')}</div>
                             <div className={`${styles.statValue} ${styles.positive}`}>
-                                {stats.total_div_czk?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                {(stats.total_div_base ?? stats.total_div_czk)?.toLocaleString(undefined, { maximumFractionDigits: 0 })} {CURRENCY_SYMBOLS[stats.base_currency || 'CZK'] || stats.base_currency}
                             </div>
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('div_tax')}</div>
                             <div className={`${styles.statValue} ${styles.negative}`}>
-                                -{stats.total_tax_czk?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                -{(stats.total_tax_base ?? stats.total_tax_czk)?.toLocaleString(undefined, { maximumFractionDigits: 0 })} {CURRENCY_SYMBOLS[stats.base_currency || 'CZK'] || stats.base_currency}
                             </div>
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('div_net')}</div>
                             <div className={styles.statValue}>
-                                {stats.total_net_czk?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                {(stats.total_net_base ?? stats.total_net_czk)?.toLocaleString(undefined, { maximumFractionDigits: 0 })} {CURRENCY_SYMBOLS[stats.base_currency || 'CZK'] || stats.base_currency}
                             </div>
                         </Card>
                         <Card className={styles.statCard}>
