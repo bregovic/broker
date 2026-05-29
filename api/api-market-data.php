@@ -43,6 +43,11 @@ $sql = "SELECT DISTINCT src.ticker,
                COALESCE(l.all_time_low, l.low_52w) as low_52w,
                l.ema_212,
                l.resilience_score,
+               l.ex_dividend_date,
+               l.dividend_yield,
+               l.dividend_rate,
+               l.dividend_frequency,
+               l.five_year_avg_yield,
                l.last_fetched,
                CASE WHEN w.ticker IS NOT NULL THEN 1 ELSE 0 END as is_watched
         FROM (

@@ -69,6 +69,9 @@ interface MarketItem {
     resilience_score?: number;
     last_fetched?: string;
     is_watched?: number;
+    dividend_yield?: number;
+    dividend_rate?: number;
+    ex_dividend_date?: string;
 }
 
 const ChartModal = ({ open, ticker, currency, companyName, onClose }: { open: boolean, ticker: string, currency: string, companyName: string, onClose: () => void }) => {
@@ -268,6 +271,43 @@ const MarketPage = () => {
         createTableColumn<MarketItem>({ columnId: 'price', compare: (a, b) => a.current_price - b.current_price, renderHeaderCell: () => t('col_price'), renderCell: (item) => <div><strong>{Number(item.current_price).toLocaleString()}</strong> <small style={{ color: tokens.colorNeutralForeground3 }}>{item.currency}</small></div> }),
 
         createTableColumn<MarketItem>({ columnId: 'change_pct', compare: (a, b) => a.change_percent - b.change_percent, renderHeaderCell: () => t('col_change_pct'), renderCell: (item) => { const val = Number(item.change_percent); return <span className={val >= 0 ? styles.pos : styles.neg} style={{ fontWeight: 600 }}>{val > 0 ? '+' : ''}{val.toFixed(2)}%</span>; } }),
+        createTableColumn<MarketItem>({
+            columnId: 'dividend_yield',
+            compare: (a, b) => Number(a.dividend_yield || 0) - Number(b.dividend_yield || 0),
+            renderHeaderCell: () => 'Div. výnos %',
+            renderCell: (item) => {
+                const val = Number(item.dividend_yield || 0);
+                return val > 0 ? <span className={styles.pos} style={{ fontWeight: 600 }}>{val.toFixed(2)}%</span> : <span className={styles.smallText}>-</span>;
+            }
+        }),
+        createTableColumn<MarketItem>({
+            columnId: 'dividend_rate',
+            compare: (a, b) => Number(a.dividend_rate || 0) - Number(b.dividend_rate || 0),
+            renderHeaderCell: () => 'Dividenda',
+            renderCell: (item) => {
+                const val = Number(item.dividend_rate || 0);
+                return val > 0 ? <span>{val.toFixed(2)} <small style={{ color: tokens.colorNeutralForeground3 }}>{item.currency}</small></span> : <span className={styles.smallText}>-</span>;
+            }
+        }),
+        createTableColumn<MarketItem>({
+            columnId: 'ex_dividend_date',
+            compare: (a, b) => {
+                const da = a.ex_dividend_date ? new Date(a.ex_dividend_date).getTime() : 0;
+                const db = b.ex_dividend_date ? new Date(b.ex_dividend_date).getTime() : 0;
+                return da - db;
+            },
+            renderHeaderCell: () => 'Ex-div. datum',
+            renderCell: (item) => {
+                if (!item.ex_dividend_date) return <span className={styles.smallText}>-</span>;
+                const exDate = new Date(item.ex_dividend_date);
+                const isUpcoming = exDate.getTime() >= new Date().setHours(0,0,0,0);
+                return (
+                    <span style={isUpcoming ? { fontWeight: 600, color: tokens.colorPaletteGreenForeground1 } : { color: tokens.colorNeutralForeground3 }}>
+                        {exDate.toLocaleDateString(t('locale') === 'en' ? 'en-US' : 'cs-CZ')}
+                    </span>
+                );
+            }
+        }),
         createTableColumn<MarketItem>({
             columnId: 'ath',
             compare: (a, b) => { const rA = a.high_52w ? (a.current_price / a.high_52w) : 0; const rB = b.high_52w ? (b.current_price / b.high_52w) : 0; return rA - rB; },

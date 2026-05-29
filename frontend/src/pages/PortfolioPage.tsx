@@ -175,14 +175,14 @@ export const PortfolioPage = () => {
         {
             columnId: 'amount',
             renderHeaderCell: () => t('col_quantity'),
-            renderCell: (item: TransactionItem) => item.amount?.toLocaleString(undefined, { maximumFractionDigits: 6 }),
-            compare: (a: TransactionItem, b: TransactionItem) => a.amount - b.amount,
+            renderCell: (item: TransactionItem) => item.amount != null ? Number(item.amount).toLocaleString(undefined, { maximumFractionDigits: 6 }) : '-',
+            compare: (a: TransactionItem, b: TransactionItem) => Number(a.amount) - Number(b.amount),
         },
         {
             columnId: 'price',
             renderHeaderCell: () => t('col_prices_unit'),
-            renderCell: (item: TransactionItem) => item.price?.toFixed(2),
-            compare: (a: TransactionItem, b: TransactionItem) => a.price - b.price,
+            renderCell: (item: TransactionItem) => item.price != null ? Number(item.price).toFixed(2) : '-',
+            compare: (a: TransactionItem, b: TransactionItem) => Number(a.price) - Number(b.price),
         },
         {
             columnId: 'currency',
@@ -193,14 +193,14 @@ export const PortfolioPage = () => {
         {
             columnId: 'amount_cur',
             renderHeaderCell: () => t('col_total_orig'),
-            renderCell: (item: TransactionItem) => item.amount_cur?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            compare: (a: TransactionItem, b: TransactionItem) => a.amount_cur - b.amount_cur,
+            renderCell: (item: TransactionItem) => item.amount_cur != null ? Number(item.amount_cur).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-',
+            compare: (a: TransactionItem, b: TransactionItem) => Number(a.amount_cur) - Number(b.amount_cur),
         },
         {
             columnId: 'ex_rate',
             renderHeaderCell: () => t('col_rate'),
-            renderCell: (item: TransactionItem) => item.ex_rate?.toFixed(4),
-            compare: (a: TransactionItem, b: TransactionItem) => a.ex_rate - b.ex_rate,
+            renderCell: (item: TransactionItem) => item.ex_rate != null ? Number(item.ex_rate).toFixed(4) : '-',
+            compare: (a: TransactionItem, b: TransactionItem) => Number(a.ex_rate) - Number(b.ex_rate),
         },
         {
             columnId: 'amount_czk',
@@ -211,11 +211,11 @@ export const PortfolioPage = () => {
                 const colorClass = isBuy ? styles.buy : (isSell ? styles.sell : styles.neutral);
                 return (
                     <Text weight="semibold" className={colorClass}>
-                        {item.amount_czk?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {item.amount_czk != null ? Number(item.amount_czk).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-'}
                     </Text>
                 );
             },
-            compare: (a: TransactionItem, b: TransactionItem) => a.amount_czk - b.amount_czk,
+            compare: (a: TransactionItem, b: TransactionItem) => Number(a.amount_czk) - Number(b.amount_czk),
         },
         {
             columnId: 'platform',

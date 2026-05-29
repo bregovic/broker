@@ -157,52 +157,64 @@ export const BalancePage = () => {
             compare: (a: PortfolioItem, b: PortfolioItem) => a.platform.localeCompare(b.platform)
         },
         {
-            columnId: 'net_qty', renderHeaderCell: () => t('col_quantity'), renderCell: (item: PortfolioItem) => item.net_qty.toLocaleString(undefined, { maximumFractionDigits: 4 }),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.net_qty - b.net_qty
+            columnId: 'net_qty', renderHeaderCell: () => t('col_quantity'), renderCell: (item: PortfolioItem) => item.net_qty != null ? Number(item.net_qty).toLocaleString(undefined, { maximumFractionDigits: 4 }) : '0',
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.net_qty) - Number(b.net_qty)
         },
         {
-            columnId: 'avg_cost_orig', renderHeaderCell: () => t('col_avg_cost_orig'), renderCell: (item: PortfolioItem) => item.avg_cost_orig?.toFixed(2),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.avg_cost_orig - b.avg_cost_orig
+            columnId: 'avg_cost_orig', renderHeaderCell: () => t('col_avg_cost_orig'), renderCell: (item: PortfolioItem) => item.avg_cost_orig != null ? Number(item.avg_cost_orig).toFixed(2) : '-',
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.avg_cost_orig) - Number(b.avg_cost_orig)
         },
         {
-            columnId: 'current_price', renderHeaderCell: () => t('col_curr_price'), renderCell: (item: PortfolioItem) => item.current_price?.toFixed(2),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.current_price - b.current_price
+            columnId: 'current_price', renderHeaderCell: () => t('col_curr_price'), renderCell: (item: PortfolioItem) => item.current_price != null ? Number(item.current_price).toFixed(2) : '-',
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.current_price) - Number(b.current_price)
         },
         {
-            columnId: 'current_value_czk', renderHeaderCell: () => t('col_value_czk'), renderCell: (item: PortfolioItem) => <Text weight="semibold">{item.current_value_czk.toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>,
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.current_value_czk - b.current_value_czk
+            columnId: 'current_value_czk', renderHeaderCell: () => t('col_value_czk'), renderCell: (item: PortfolioItem) => <Text weight="semibold">{item.current_value_czk != null ? Number(item.current_value_czk).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}</Text>,
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.current_value_czk) - Number(b.current_value_czk)
         },
         {
-            columnId: 'unrealized_orig', renderHeaderCell: () => t('col_pnl_orig'), renderCell: (item: PortfolioItem) => (
-                <Text className={item.unrealized_orig >= 0 ? styles.positive : styles.negative}>
-                    {item.unrealized_orig > 0 ? '+' : ''}{item.unrealized_orig.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </Text>
-            ),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.unrealized_orig - b.unrealized_orig
+            columnId: 'unrealized_orig', renderHeaderCell: () => t('col_pnl_orig'), renderCell: (item: PortfolioItem) => {
+                const val = item.unrealized_orig != null ? Number(item.unrealized_orig) : 0;
+                return (
+                    <Text className={val >= 0 ? styles.positive : styles.negative}>
+                        {val > 0 ? '+' : ''}{val.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </Text>
+                );
+            },
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.unrealized_orig) - Number(b.unrealized_orig)
         },
         {
-            columnId: 'unrealized_pct_orig', renderHeaderCell: () => t('col_pnl_pct_orig'), renderCell: (item: PortfolioItem) => (
-                <Text className={item.unrealized_pct_orig >= 0 ? styles.positive : styles.negative}>
-                    {item.unrealized_pct_orig.toFixed(2)} %
-                </Text>
-            ),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.unrealized_pct_orig - b.unrealized_pct_orig, sortable: true
+            columnId: 'unrealized_pct_orig', renderHeaderCell: () => t('col_pnl_pct_orig'), renderCell: (item: PortfolioItem) => {
+                const val = item.unrealized_pct_orig != null ? Number(item.unrealized_pct_orig) : 0;
+                return (
+                    <Text className={val >= 0 ? styles.positive : styles.negative}>
+                        {val.toFixed(2)} %
+                    </Text>
+                );
+            },
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.unrealized_pct_orig) - Number(b.unrealized_pct_orig), sortable: true
         },
         {
-            columnId: 'fx_pnl_czk', renderHeaderCell: () => t('col_fx_pnl'), renderCell: (item: PortfolioItem) => (
-                <Text className={item.fx_pnl_czk >= 0 ? styles.positive : styles.negative}>
-                    {item.fx_pnl_czk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </Text>
-            ),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.fx_pnl_czk - b.fx_pnl_czk, sortable: true
+            columnId: 'fx_pnl_czk', renderHeaderCell: () => t('col_fx_pnl'), renderCell: (item: PortfolioItem) => {
+                const val = item.fx_pnl_czk != null ? Number(item.fx_pnl_czk) : 0;
+                return (
+                    <Text className={val >= 0 ? styles.positive : styles.negative}>
+                        {val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </Text>
+                );
+            },
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.fx_pnl_czk) - Number(b.fx_pnl_czk), sortable: true
         },
         {
-            columnId: 'unrealized_czk', renderHeaderCell: () => t('col_pnl_czk'), renderCell: (item: PortfolioItem) => (
-                <Text weight="semibold" className={item.unrealized_czk >= 0 ? styles.positive : styles.negative}>
-                    {item.unrealized_czk.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </Text>
-            ),
-            compare: (a: PortfolioItem, b: PortfolioItem) => a.unrealized_czk - b.unrealized_czk, sortable: true
+            columnId: 'unrealized_czk', renderHeaderCell: () => t('col_pnl_czk'), renderCell: (item: PortfolioItem) => {
+                const val = item.unrealized_czk != null ? Number(item.unrealized_czk) : 0;
+                return (
+                    <Text weight="semibold" className={val >= 0 ? styles.positive : styles.negative}>
+                        {val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </Text>
+                );
+            },
+            compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.unrealized_czk) - Number(b.unrealized_czk), sortable: true
         }
     ], [t, styles.positive, styles.negative]);
 

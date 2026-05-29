@@ -90,6 +90,23 @@ try {
     function processTicker($pdo, $googleService, $ticker, $period, $force = false) {
         $errorLog = [];
         $originalTicker = $ticker;
+
+        // Smart cache bypass: if last_fetched in live_quotes is today, and we're not forcing, immediately return 'cache'
+        if (!$force) {
+            try {
+                // Ensure db is self-healed first so we can query ticker/id columns safely
+                require_once __DIR__ . '/setup_dividend_db.php';
+                ensure_dividend_db_setup($pdo);
+                
+                $stmtCheckToday = $pdo->prepare("SELECT COUNT(*) FROM live_quotes WHERE (ticker = ? OR id = ?) AND DATE(last_fetched) = CURRENT_DATE");
+                $stmtCheckToday->execute([$originalTicker, $originalTicker]);
+                if ($stmtCheckToday->fetchColumn() > 0) {
+                    return ['status' => 'ok', 'source' => 'cache'];
+                }
+            } catch (Exception $e) {
+                error_log("ajax-fetch-history smart cache check failed: " . $e->getMessage());
+            }
+        }
         
         $dateColumn = 'date';
         try {

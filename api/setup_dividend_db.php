@@ -130,5 +130,42 @@ function ensure_dividend_db_setup(PDO $pdo) {
     } catch (Exception $colEx) {
         error_log("setup_dividend_db: Warning checking/adding status column to ticker_mapping - " . $colEx->getMessage());
     }
+
+    // 6. Ensure live_quotes has both id and ticker columns, and syncs them automatically under PostgreSQL
+    try {
+        if ($driver === 'pgsql') {
+            // Ensure id column exists
+            $stmtCheckId = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name='live_quotes' AND column_name='id'");
+            $stmtCheckId->execute();
+            if (!(bool)$stmtCheckId->fetchColumn()) {
+                $pdo->exec("ALTER TABLE live_quotes ADD COLUMN id VARCHAR(20)");
+                $pdo->exec("UPDATE live_quotes SET id = ticker WHERE id IS NULL");
+            }
+
+            // Ensure trigger function and trigger exist
+            $pdo->exec("DROP TRIGGER IF EXISTS trigger_sync_live_quotes ON live_quotes");
+            $pdo->exec("
+                CREATE OR REPLACE FUNCTION sync_live_quotes_id_ticker()
+                RETURNS TRIGGER AS \$body\$
+                BEGIN
+                    IF NEW.id IS NULL AND NEW.ticker IS NOT NULL THEN
+                        NEW.id := NEW.ticker;
+                    ELSIF NEW.ticker IS NULL AND NEW.id IS NOT NULL THEN
+                        NEW.ticker := NEW.id;
+                    END IF;
+                    RETURN NEW;
+                END;
+                \$body\$ LANGUAGE plpgsql;
+            ");
+            $pdo->exec("
+                CREATE TRIGGER trigger_sync_live_quotes
+                BEFORE INSERT OR UPDATE ON live_quotes
+                FOR EACH ROW
+                EXECUTE FUNCTION sync_live_quotes_id_ticker();
+            ");
+        }
+    } catch (Exception $triggerEx) {
+        error_log("setup_dividend_db: Warning creating trigger on live_quotes - " . $triggerEx->getMessage());
+    }
 }
 
