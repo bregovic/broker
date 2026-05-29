@@ -40,7 +40,7 @@ $sql = "SELECT
             currency, 
             amount_czk, 
             platform, 
-            COALESCE(notes, '') AS notes 
+            '' AS notes 
         FROM transactions 
         WHERE user_id = ? AND trans_type IN ('Dividend', 'Withholding') 
         ORDER BY date DESC, trans_id DESC";
