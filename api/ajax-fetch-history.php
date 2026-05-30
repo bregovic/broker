@@ -102,7 +102,13 @@ try {
                 $stmtCheckToday = $pdo->prepare("SELECT COUNT(*) FROM live_quotes WHERE (ticker = ? OR id = ?) AND DATE(last_fetched) = CURRENT_DATE");
                 $stmtCheckToday->execute([$originalTicker, $originalTicker]);
                 if ($stmtCheckToday->fetchColumn() > 0) {
-                    return ['status' => 'ok', 'source' => 'cache'];
+                    // ...but only treat as cached if we actually already have history for it.
+                    // (last_fetched is set by PRICE updates; a freshly added ticker has none.)
+                    $stmtHasHist = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ?");
+                    $stmtHasHist->execute([$originalTicker]);
+                    if ($stmtHasHist->fetchColumn() > 0) {
+                        return ['status' => 'ok', 'source' => 'cache'];
+                    }
                 }
             } catch (Exception $e) {
                 error_log("ajax-fetch-history smart cache check failed: " . $e->getMessage());
