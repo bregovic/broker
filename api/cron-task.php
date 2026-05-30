@@ -204,19 +204,31 @@ function upsertRate(PDO $pdo, $date, $code, $amount, $rate, $src, &$ins, &$upd) 
     $exists = $s->fetchColumn() > 0;
     
     if ($exists) {
-        // Zkusíme aktualizovat i sloupec updated_at (používá se v MySQL)
-        // Pokud v PostgreSQL neexistuje, chytíme výjimku a provedeme standardní update
+        // Zkusíme aktualizovat i sloupce updated_at a source (které jsou v MySQL)
+        // Postupně chytáme výjimky a zkoušíme ořezané dotazy pro PostgreSQL
         try {
             $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=?, updated_at=CURRENT_TIMESTAMP WHERE date=? AND currency=?");
             $u->execute([$rate, $amount, $src, $date, $code]);
         } catch (Exception $e) {
-            $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=? WHERE date=? AND currency=?");
-            $u->execute([$rate, $amount, $src, $date, $code]);
+            try {
+                $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=? WHERE date=? AND currency=?");
+                $u->execute([$rate, $amount, $src, $date, $code]);
+            } catch (Exception $e2) {
+                $u = $pdo->prepare("UPDATE rates SET rate=?, amount=? WHERE date=? AND currency=?");
+                $u->execute([$rate, $amount, $date, $code]);
+            }
         }
         $upd++;
     } else {
-        $i = $pdo->prepare("INSERT INTO rates (date, currency, rate, amount, source) VALUES (?, ?, ?, ?, ?)");
-        $i->execute([$date, $code, $rate, $amount, $src]);
+        // Zkusíme vložit včetně sloupce source
+        // Pokud v PostgreSQL chybí, chytíme výjimku a vložíme pouze základní sloupce
+        try {
+            $i = $pdo->prepare("INSERT INTO rates (date, currency, rate, amount, source) VALUES (?, ?, ?, ?, ?)");
+            $i->execute([$date, $code, $rate, $amount, $src]);
+        } catch (Exception $e) {
+            $i = $pdo->prepare("INSERT INTO rates (date, currency, rate, amount) VALUES (?, ?, ?, ?)");
+            $i->execute([$date, $code, $rate, $amount]);
+        }
         $ins++;
     }
 }
