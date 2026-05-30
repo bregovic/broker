@@ -60,6 +60,9 @@ interface MarketItem {
     exchange: string;
     currency: string;
     current_price: number;
+    current_price_czk?: number;
+    current_price_base?: number;
+    base_currency?: string;
     change_percent: number;
     change_absolute: number;
     asset_type: string;
@@ -268,7 +271,7 @@ const MarketPage = () => {
         }),
         createTableColumn<MarketItem>({ columnId: 'company_name', compare: (a, b) => a.company_name.localeCompare(b.company_name), renderHeaderCell: () => t('col_company'), renderCell: (item) => <Text size={200} block truncate wrap={false}>{item.company_name}</Text> }),
         createTableColumn<MarketItem>({ columnId: 'exchange', renderHeaderCell: () => t('col_exchange'), renderCell: (item) => <span style={{ color: tokens.colorBrandForeground1 }}>{item.exchange}</span> }),
-        createTableColumn<MarketItem>({ columnId: 'price', compare: (a, b) => a.current_price - b.current_price, renderHeaderCell: () => t('col_price'), renderCell: (item) => <div><strong>{Number(item.current_price).toLocaleString()}</strong> <small style={{ color: tokens.colorNeutralForeground3 }}>{item.currency}</small></div> }),
+        createTableColumn<MarketItem>({ columnId: 'price', compare: (a, b) => a.current_price - b.current_price, renderHeaderCell: () => t('col_price'), renderCell: (item) => (<div><div><strong>{Number(item.current_price).toLocaleString()}</strong> <small style={{ color: tokens.colorNeutralForeground3 }}>{item.currency}</small></div>{item.current_price_czk != null && item.currency !== 'CZK' && <small style={{ color: tokens.colorNeutralForeground3 }}>{Number(item.current_price_czk).toLocaleString(undefined, { maximumFractionDigits: 2 })} CZK</small>}</div>) }),
 
         createTableColumn<MarketItem>({ columnId: 'change_pct', compare: (a, b) => a.change_percent - b.change_percent, renderHeaderCell: () => t('col_change_pct'), renderCell: (item) => { const val = Number(item.change_percent); return <span className={val >= 0 ? styles.pos : styles.neg} style={{ fontWeight: 600 }}>{val > 0 ? '+' : ''}{val.toFixed(2)}%</span>; } }),
         createTableColumn<MarketItem>({

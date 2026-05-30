@@ -30,6 +30,29 @@ function resolveUserId() {
 }
 $userId = resolveUserId();
 
+// FX rates (latest CZK per unit, per currency) + the user's accounting currency,
+// so every instrument can be shown in CZK / the user's base currency on display.
+require_once __DIR__ . '/rate_sync.php';
+try { ensure_current_rates($pdo); } catch (Exception $e) {}
+$rates = ['CZK' => 1.0];
+try {
+    $rStmt = $pdo->query("SELECT r.currency, r.rate, r.amount FROM rates r
+        INNER JOIN (SELECT currency, MAX(date) max_date FROM rates GROUP BY currency) m
+        ON r.currency = m.currency AND r.date = m.max_date");
+    while ($r = $rStmt->fetch(PDO::FETCH_ASSOC)) {
+        $amt = (float)$r['amount'];
+        $rates[strtoupper($r['currency'])] = $amt > 0 ? (float)$r['rate'] / $amt : 0.0;
+    }
+} catch (Exception $e) {}
+$baseCurrency = 'CZK';
+try {
+    $bStmt = $pdo->prepare("SELECT base_currency FROM user_settings WHERE user_id = ?");
+    $bStmt->execute([$userId]);
+    $bc = $bStmt->fetchColumn();
+    if ($bc) $baseCurrency = strtoupper(trim($bc));
+} catch (Exception $e) {}
+$baseRate = $rates[$baseCurrency] ?? 1.0; // CZK per 1 unit of the base currency
+
 // 1. Get tickers with meta - matching new schema (ticker instead of id, price instead of current_price)
 $sql = "SELECT DISTINCT src.ticker, 
                COALESCE(t.company_name, src.ticker) as company_name, 
@@ -75,7 +98,22 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute([':uid' => $userId]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode(['data' => $rows]);
+
+    // Enrich each row with CZK and base-currency values (single native price in DB,
+    // converted on display — no duplicate per-currency storage).
+    foreach ($rows as &$row) {
+        $cur   = strtoupper($row['currency'] ?? 'USD');
+        $rate  = $rates[$cur] ?? 0.0;                 // CZK per 1 unit of the quote currency
+        $price = (float)($row['current_price'] ?? 0);
+        $czk   = $rate > 0 ? $price * $rate : null;
+        $row['rate_to_czk']        = $rate ?: null;
+        $row['current_price_czk']  = $czk;
+        $row['base_currency']      = $baseCurrency;
+        $row['current_price_base'] = ($czk !== null && $baseRate > 0) ? $czk / $baseRate : null;
+    }
+    unset($row);
+
+    echo json_encode(['data' => $rows, 'base_currency' => $baseCurrency]);
 } catch (Exception $e) {
     echo json_encode(['error' => $e->getMessage()]);
 }
