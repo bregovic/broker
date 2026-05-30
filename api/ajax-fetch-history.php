@@ -387,7 +387,10 @@ try {
             $ema = calcEMA($weeklyPrices, 212);
             
             // Composite quality score (growth + stability + longevity + resilience bonus).
-            $resilience = quality_score($allPrices);
+            $dyStmt = $pdo->prepare("SELECT dividend_yield FROM live_quotes WHERE id = ?");
+            $dyStmt->execute([$originalTicker]);
+            $divYield = (float)($dyStmt->fetchColumn() ?: 0);
+            $resilience = quality_score($allPrices, $divYield);
 
             $sqlUpd = "UPDATE live_quotes SET all_time_high=?, all_time_low=?, ema_212=?, resilience_score=? WHERE id=?";
             $pdo->prepare($sqlUpd)->execute([$ath, $atl, $ema, $resilience, $originalTicker]);

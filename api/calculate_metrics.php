@@ -23,10 +23,12 @@ try {
 
     // 2. Calculate Metrics
     echo "Calculating metrics...\n";
-    $stmt = $pdo->query("SELECT id FROM live_quotes WHERE status='active'");
-    $tickers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $stmt = $pdo->query("SELECT id, dividend_yield FROM live_quotes WHERE status='active'");
+    $tickers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    foreach ($tickers as $ticker) {
+    foreach ($tickers as $row) {
+        $ticker = $row['id'];
+        $divYield = (float)($row['dividend_yield'] ?? 0);
         // Fetch History
         $histStmt = $pdo->prepare("SELECT history_date AS date, price FROM tickers_history WHERE ticker = ? ORDER BY history_date ASC");
         $histStmt->execute([$ticker]);
@@ -77,7 +79,7 @@ try {
             if ($atl === null || $p < $atl) $atl = $p;
         }
         // Composite quality score (growth + stability + longevity + resilience bonus).
-        $resilience = quality_score($allPrices);
+        $resilience = quality_score($allPrices, $divYield);
 
         // Update DB
         $upd = $pdo->prepare("UPDATE live_quotes SET high_52w = ?, low_52w = ?, ema_212 = ?, all_time_high = ?, all_time_low = ?, resilience_score = ? WHERE id = ?");

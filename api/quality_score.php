@@ -10,7 +10,7 @@
  *
  * @param float[] $prices chronological prices (oldest first)
  */
-function quality_score(array $prices): int {
+function quality_score(array $prices, float $dividendYield = 0.0): int {
     $prices = array_values(array_filter(array_map('floatval', $prices), fn($p) => $p > 0));
     $years = count($prices) / 252.0;
     if ($years < 2) return 0; // no track record yet
@@ -33,6 +33,11 @@ function quality_score(array $prices): int {
     $now = $prices[count($prices) - 1];
     $proximity = $ath > 0 ? max(0.0, min($now / $ath, 1.0)) : 0.0;
 
+    // 1-year momentum: a stock climbing back from a fall is "healthy" too, not only
+    // one already near its high. +30% over the last year => full credit.
+    $y1 = $prices[max(0, count($prices) - 252)];
+    $momentum = $y1 > 0 ? max(0.0, min(($now / $y1 - 1) / 0.30, 1.0)) : 0.0;
+
     // Resilience bonus: deep crashes (>=60% from ATH) that fully recovered, last ~12y.
     $rw = count($prices) > 3000 ? array_slice($prices, -3000) : $prices;
     $r = 0.0; $peak = 0.0; $inCrash = false; $crashPeak = 0.0; $trough = 0.0;
@@ -47,10 +52,12 @@ function quality_score(array $prices): int {
     }
     $bonus = min(($r * 100) / 12.0, 10.0);
 
-    // ATH proximity acts as a GATE (multiplier), not just an additive term, so a
-    // stock that rose, peaked and then permanently fell — never returning near its
-    // high — is pulled down no matter how strong its recent growth looks.
+    // Health = near its all-time high OR clearly recovering — used as a GATE
+    // (multiplier). So "rose then stayed dead" (AIG) is pulled down, while "stable
+    // near the top" (META) and "climbing back from the bottom" (AES) are not punished.
+    $health = max($proximity, 0.65 * $momentum);
     $base = 35 * $growth + 35 * $stability + 20 * $longevity + $bonus; // 0..100
-    $factor = 0.30 + 0.70 * $proximity;                                // 1.0 at ATH, 0.3 if far below
-    return (int) round($base * $factor);
+    $factor = 0.30 + 0.70 * $health;
+    $divBonus = min(max($dividendYield, 0.0), 6.0);   // small reward for paying a dividend (yield %, cap 6)
+    return (int) round($base * $factor + $divBonus);
 }
