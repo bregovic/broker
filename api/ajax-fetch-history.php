@@ -92,29 +92,16 @@ try {
         $errorLog = [];
         $originalTicker = $ticker;
 
-        // Smart cache bypass: if last_fetched in live_quotes is today, and we're not forcing, immediately return 'cache'
-        if (!$force) {
-            try {
-                // Ensure db is self-healed first so we can query ticker/id columns safely
-                require_once __DIR__ . '/setup_dividend_db.php';
-                ensure_dividend_db_setup($pdo);
-                
-                $stmtCheckToday = $pdo->prepare("SELECT COUNT(*) FROM live_quotes WHERE (ticker = ? OR id = ?) AND DATE(last_fetched) = CURRENT_DATE");
-                $stmtCheckToday->execute([$originalTicker, $originalTicker]);
-                if ($stmtCheckToday->fetchColumn() > 0) {
-                    // ...but only treat as cached if we actually already have history for it.
-                    // (last_fetched is set by PRICE updates; a freshly added ticker has none.)
-                    $stmtHasHist = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ?");
-                    $stmtHasHist->execute([$originalTicker]);
-                    if ($stmtHasHist->fetchColumn() > 0) {
-                        return ['status' => 'ok', 'source' => 'cache'];
-                    }
-                }
-            } catch (Exception $e) {
-                error_log("ajax-fetch-history smart cache check failed: " . $e->getMessage());
-            }
+        // Self-heal columns so we can query ticker/id safely. Whether to skip the
+        // fetch is decided below by the actual history-coverage check (which knows
+        // the requested period), not by the price-update timestamp.
+        try {
+            require_once __DIR__ . '/setup_dividend_db.php';
+            ensure_dividend_db_setup($pdo);
+        } catch (Exception $e) {
+            error_log("ajax-fetch-history self-heal failed: " . $e->getMessage());
         }
-        
+
         $dateColumn = 'date';
         try {
             $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
@@ -173,10 +160,11 @@ try {
         // Shared Cache Check
         $hasCache = false;
         try {
-            // "Already downloaded" = we hold history from at least ~1 year back up to
-            // recent. Don't require data all the way to the requested start (for 'max'
-            // that's decades ago and no stock would ever match -> it'd always refetch).
-            $startTolDate = date('Y-m-d', max(strtotime('+5 days', $start), strtotime('-1 year')));
+            // Treat as already-downloaded only if we hold the requested span. For 'max'
+            // (start = decades ago) cap the requirement at ~12 years, so a ticker that
+            // only has a couple of years of history is NOT skipped and gets its full
+            // history fetched — while a ticker that already has a long history is skipped.
+            $startTolDate = date('Y-m-d', max(strtotime('+5 days', $start), strtotime('-12 years')));
             $endTolDate = date('Y-m-d', strtotime('-3 days', $end));
             
             $stmtStart = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ? AND $dateColumn <= ?");
@@ -292,7 +280,14 @@ try {
                 }
             }
             $pdo->commit();
-            
+
+            // Exchange comes free from the chart meta (no crumb needed, unlike the
+            // v7 quote below which is often blocked) — save it right away.
+            $exMeta = $yahooData['meta']['fullExchangeName'] ?? $yahooData['meta']['exchangeName'] ?? '';
+            if ($exMeta !== '') {
+                try { $pdo->prepare("UPDATE live_quotes SET exchange = ? WHERE id = ?")->execute([$exMeta, $originalTicker]); } catch (Exception $e) {}
+            }
+
             // 2. Fetch Fundamentals (v7 quote) to update live_quotes table
             $qUrl = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" . urlencode($yahooTicker);
             $qJson = fetchUrl($qUrl);
