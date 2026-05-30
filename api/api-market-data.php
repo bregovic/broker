@@ -71,6 +71,10 @@ $sql = "SELECT DISTINCT src.ticker,
                l.dividend_rate,
                l.dividend_frequency,
                l.five_year_avg_yield,
+               l.sector,
+               l.industry,
+               l.market_cap,
+               l.pe_ratio,
                l.last_fetched,
                CASE WHEN w.ticker IS NOT NULL THEN 1 ELSE 0 END as is_watched
         FROM (

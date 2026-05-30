@@ -75,6 +75,10 @@ interface MarketItem {
     dividend_yield?: number;
     dividend_rate?: number;
     ex_dividend_date?: string;
+    sector?: string;
+    industry?: string;
+    market_cap?: number;
+    pe_ratio?: number;
 }
 
 const ChartModal = ({ open, ticker, currency, companyName, onClose }: { open: boolean, ticker: string, currency: string, companyName: string, onClose: () => void }) => {
@@ -186,6 +190,7 @@ const MarketPage = () => {
     const [loading, setLoading] = useState(true);
     const [filterText] = useState('');
     const [showWatchedOnly, setShowWatchedOnly] = useState(false);
+    const [sectorFilter, setSectorFilter] = useState<string>('all');
     const [isAddOpen, setAddOpen] = useState(false);
     const [newTicker, setNewTicker] = useState('');
     const [adding, setAdding] = useState(false);
@@ -217,8 +222,11 @@ const MarketPage = () => {
 
     useEffect(() => { fetchItems(); }, []);
 
+    const sectorOptions = Array.from(new Set(items.map(i => i.sector).filter(Boolean) as string[])).sort();
+
     const filteredItems = items.filter(item => {
         if (showWatchedOnly && Number(item.is_watched) !== 1) return false;
+        if (sectorFilter !== 'all' && item.sector !== sectorFilter) return false;
         if (!filterText) return true;
         const search = filterText.toLowerCase();
         return (item.ticker.toLowerCase().includes(search) || item.company_name.toLowerCase().includes(search) || (item.exchange && item.exchange.toLowerCase().includes(search)));
@@ -270,6 +278,7 @@ const MarketPage = () => {
             renderCell: (item) => <TableCellLayout media={<span style={{ fontSize: '16px', color: item.is_watched ? '#f5b942' : tokens.colorNeutralForeground3, cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); toggleWatch(item.ticker); }}>{item.is_watched ? '★' : '☆'}</span>}><strong>{item.ticker}</strong></TableCellLayout>
         }),
         createTableColumn<MarketItem>({ columnId: 'company_name', compare: (a, b) => a.company_name.localeCompare(b.company_name), renderHeaderCell: () => t('col_company'), renderCell: (item) => <Text size={200} block truncate wrap={false}>{item.company_name}</Text> }),
+        createTableColumn<MarketItem>({ columnId: 'sector', compare: (a, b) => (a.sector || '').localeCompare(b.sector || ''), renderHeaderCell: () => t('col_sector') || 'Sektor', renderCell: (item) => item.sector ? <div style={{ display: 'flex', flexDirection: 'column', fontSize: '11px', lineHeight: 1.2 }}><span>{item.sector}</span>{item.industry && <span style={{ color: tokens.colorNeutralForeground3 }}>{item.industry}</span>}</div> : <span className={styles.smallText}>-</span> }),
         createTableColumn<MarketItem>({ columnId: 'exchange', renderHeaderCell: () => t('col_exchange'), renderCell: (item) => <span style={{ color: tokens.colorBrandForeground1 }}>{item.exchange}</span> }),
         createTableColumn<MarketItem>({ columnId: 'price', compare: (a, b) => a.current_price - b.current_price, renderHeaderCell: () => t('col_price'), renderCell: (item) => (<div><div><strong>{Number(item.current_price).toLocaleString()}</strong> <small style={{ color: tokens.colorNeutralForeground3 }}>{item.currency}</small></div>{item.current_price_czk != null && item.currency !== 'CZK' && <small style={{ color: tokens.colorNeutralForeground3 }}>{Number(item.current_price_czk).toLocaleString(undefined, { maximumFractionDigits: 2 })} CZK</small>}</div>) }),
 
@@ -415,6 +424,15 @@ const MarketPage = () => {
                     </Dialog>
                     <div style={{ display: 'flex', alignItems: 'center', marginLeft: '10px', gap: '8px' }}>
                         <Switch label={showWatchedOnly ? t('filter_watched_on') : t('filter_watched_off')} checked={showWatchedOnly} onChange={(_ev, data) => setShowWatchedOnly(Boolean(data.checked))} />
+                        {sectorOptions.length > 0 && (
+                            <Dropdown aria-label="Sektor" style={{ minWidth: '150px' }}
+                                value={sectorFilter === 'all' ? (t('sector_all') || 'Sektor: vše') : sectorFilter}
+                                selectedOptions={[sectorFilter]}
+                                onOptionSelect={(_e, d) => setSectorFilter(String(d.optionValue))}>
+                                <Option value="all">{t('sector_all') || 'Sektor: vše'}</Option>
+                                {sectorOptions.map(s => <Option key={s} value={s}>{s}</Option>)}
+                            </Dropdown>
+                        )}
                     </div>
                     <ToolbarDivider />
                     <ToolbarDivider />

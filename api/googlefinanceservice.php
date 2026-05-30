@@ -319,7 +319,11 @@ class GoogleFinanceService
                     payout_ratio = ?,
                     dividend_yield = ?,
                     dividend_rate = ?,
-                    five_year_avg_yield = ?
+                    five_year_avg_yield = ?,
+                    sector = COALESCE(?, sector),
+                    industry = COALESCE(?, industry),
+                    market_cap = COALESCE(?, market_cap),
+                    pe_ratio = COALESCE(?, pe_ratio)
                     WHERE ticker = ?";
             $params = [
                 $currentPrice,
@@ -335,6 +339,10 @@ class GoogleFinanceService
                 isset($data['dividend_yield']) ? (float)$data['dividend_yield'] : null,
                 isset($data['dividend_rate']) ? (float)$data['dividend_rate'] : null,
                 isset($data['five_year_avg_yield']) ? (float)$data['five_year_avg_yield'] : null,
+                $data['sector'] ?? null,
+                $data['industry'] ?? null,
+                isset($data['market_cap']) ? (int)$data['market_cap'] : null,
+                isset($data['pe_ratio']) ? (float)$data['pe_ratio'] : null,
                 $tickerId
             ];
         } else {
@@ -343,8 +351,9 @@ class GoogleFinanceService
             
             $sql = "INSERT INTO live_quotes 
                     (ticker, source, last_fetched, price, current_price, change_amount, change_percent, currency, exchange, company_name, status,
-                     ex_dividend_date, payout_ratio, dividend_yield, dividend_rate, five_year_avg_yield)
-                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)";
+                     ex_dividend_date, payout_ratio, dividend_yield, dividend_rate, five_year_avg_yield,
+                     sector, industry, market_cap, pe_ratio)
+                    VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                     
             $params = [
                 $tickerId,
@@ -360,7 +369,11 @@ class GoogleFinanceService
                 isset($data['payout_ratio']) ? (float)$data['payout_ratio'] : null,
                 isset($data['dividend_yield']) ? (float)$data['dividend_yield'] : null,
                 isset($data['dividend_rate']) ? (float)$data['dividend_rate'] : null,
-                isset($data['five_year_avg_yield']) ? (float)$data['five_year_avg_yield'] : null
+                isset($data['five_year_avg_yield']) ? (float)$data['five_year_avg_yield'] : null,
+                $data['sector'] ?? null,
+                $data['industry'] ?? null,
+                isset($data['market_cap']) ? (int)$data['market_cap'] : null,
+                isset($data['pe_ratio']) ? (float)$data['pe_ratio'] : null
             ];
         }
 
@@ -800,14 +813,34 @@ class GoogleFinanceService
         $json = curl_exec($ch);
         curl_close($ch);
 
-        @unlink($cookieFile);
-
+        $quote = null;
         if ($json) {
             $data = json_decode($json, true);
-            return $data['quoteResponse']['result'][0] ?? null;
+            $quote = $data['quoteResponse']['result'][0] ?? null;
         }
 
-        return null;
+        // Step 4: sector/industry come from quoteSummary (same cookie + crumb).
+        if ($quote) {
+            $profUrl = "https://query1.finance.yahoo.com/v10/finance/quoteSummary/" . urlencode($ticker)
+                     . "?modules=assetProfile&crumb=" . urlencode($crumb);
+            $ch = curl_init($profUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_COOKIEFILE, $cookieFile);
+            $pjson = curl_exec($ch);
+            curl_close($ch);
+            if ($pjson) {
+                $prof = json_decode($pjson, true)['quoteSummary']['result'][0]['assetProfile'] ?? null;
+                if (!empty($prof['sector']))   $quote['sector'] = $prof['sector'];
+                if (!empty($prof['industry'])) $quote['industry'] = $prof['industry'];
+            }
+        }
+
+        @unlink($cookieFile);
+        return $quote;
     }
 
     private function fetchFromYahoo(string $ticker): ?array
@@ -868,6 +901,11 @@ class GoogleFinanceService
                         'dividend_yield'       => isset($quote['dividendYield']) ? (float)$quote['dividendYield'] : null,
                         'dividend_rate'        => isset($quote['dividendRate']) ? (float)$quote['dividendRate'] : null,
                         'five_year_avg_yield'  => isset($quote['fiveYearAvgDividendYield']) ? (float)$quote['fiveYearAvgDividendYield'] : null,
+
+                        'sector'               => $quote['sector'] ?? null,
+                        'industry'             => $quote['industry'] ?? null,
+                        'market_cap'           => isset($quote['marketCap']) ? (int)$quote['marketCap'] : null,
+                        'pe_ratio'             => isset($quote['trailingPE']) ? (float)$quote['trailingPE'] : null,
                     ];
                 }
             }

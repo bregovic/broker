@@ -48,7 +48,11 @@ function ensure_dividend_db_setup(PDO $pdo) {
         'dividend_yield' => 'DECIMAL(18, 8)',
         'dividend_rate' => 'DECIMAL(18, 8)',
         'dividend_frequency' => 'VARCHAR(50)',
-        'five_year_avg_yield' => 'DECIMAL(18, 8)'
+        'five_year_avg_yield' => 'DECIMAL(18, 8)',
+        'sector' => 'VARCHAR(80)',
+        'industry' => 'VARCHAR(120)',
+        'market_cap' => 'BIGINT',
+        'pe_ratio' => 'DECIMAL(18, 4)'
     ];
 
     foreach ($liveQuotesCols as $col => $def) {
