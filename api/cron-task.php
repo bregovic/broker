@@ -4,7 +4,7 @@
  * 
  * Tento skript je určen výhradně pro spouštění z příkazové řádky (CLI).
  * Zajišťuje automatickou aktualizaci kurzů měn z ČNB a cen aktivních tickerů z Google Finance.
- * Podporuje odesílání reportů na Discord přes Webhook.
+ * Ukládá logy o spuštění do databáze a volitelně podporuje reporty na Discord přes Webhook.
  * 
  * Spuštění:
  *   php api/cron-task.php rates   - Aktualizace kurzů ČNB
@@ -37,8 +37,9 @@ if (!in_array($action, ['rates', 'prices'])) {
 
 try {
     $pdo = get_pdo();
+    // Vytvoříme logovací tabulku, pokud neexistuje
+    ensureCronLogsTableExists($pdo);
 } catch (Exception $e) {
-    sendNotification("❌ **Chyba připojení k databázi v Cronu**\nChyba: " . $e->getMessage());
     echo "Chyba DB: " . $e->getMessage() . "\n";
     exit(1);
 }
@@ -158,6 +159,10 @@ function runRatesImport(PDO $pdo) {
         
         echo "[Cron] Import úspěšný: Vloženo {$ins}, Aktualizováno {$upd} za {$elapsed}s\n";
         sendNotification($msg);
+        
+        // Zápis do DB
+        $dbMsg = "Zdroj: {$sourceUsed}, Datum: {$ymd}, Vloženo: {$ins}, Aktualizováno: {$upd}";
+        logCronExecution($pdo, 'rates', 'success', $dbMsg, $elapsed);
     } else {
         $msg = "❌ **Import kurzů ČNB selhal!**\n";
         $msg .= "Nepodařilo se stáhnout data z žádného URL.\n";
@@ -168,6 +173,13 @@ function runRatesImport(PDO $pdo) {
         
         echo "[Cron] Import selhal!\n";
         sendNotification($msg);
+        
+        // Zápis do DB
+        $dbMsg = "Nepodařilo se stáhnout kurzovní lístek z ČNB. Zkoušené adresy:\n";
+        foreach ($tried as $t) {
+            $dbMsg .= "- {$t['url']} (HTTP: {$t['http_code']}, Chyba: {$t['err']})\n";
+        }
+        logCronExecution($pdo, 'rates', 'error', $dbMsg, $elapsed);
         exit(1);
     }
 }
@@ -206,6 +218,7 @@ function runPricesUpdate(PDO $pdo) {
         $msg = "❌ **Chyba v Cronu: Soubor `googlefinanceservice.php` nebyl nalezen!**";
         echo $msg . "\n";
         sendNotification($msg);
+        logCronExecution($pdo, 'prices', 'error', 'Soubor googlefinanceservice.php nebyl nalezen', 0);
         exit(1);
     }
     
@@ -225,6 +238,7 @@ function runPricesUpdate(PDO $pdo) {
         $msg = "❌ **Chyba v Cronu při načítání tickerů z DB:**\n" . $e->getMessage();
         echo $msg . "\n";
         sendNotification($msg);
+        logCronExecution($pdo, 'prices', 'error', 'Chyba načítání tickerů z DB: ' . $e->getMessage(), 0);
         exit(1);
     }
     
@@ -268,25 +282,84 @@ function runPricesUpdate(PDO $pdo) {
     $msg .= "• **Celkem tickerů:** {$total}\n";
     $msg .= "• **Úspěšně aktualizováno:** ✅ {$updated}\n";
     
+    $dbMsg = "Celkem: {$total}, Úspěšně aktualizováno: {$updated}";
+    
     if ($failed > 0) {
         $msg .= "• **Chybné tickery:** ❌ {$failed}\n";
         $msg .= "• **Chyby u:**\n";
+        
+        $dbMsg .= ", Chyby: {$failed}. Chybné tickery:\n";
         // Vypíšeme max prvních 10 chyb, ať nezahltíme zprávu
         $errorList = array_slice($failures, 0, 10);
         foreach ($errorList as $f) {
             $msg .= "  - `{$f}`\n";
+            $dbMsg .= "- {$f}\n";
         }
         if (count($failures) > 10) {
             $msg .= "  - *... a " . (count($failures) - 10) . " dalších*\n";
+            $dbMsg .= "- ... a " . (count($failures) - 10) . " dalších\n";
         }
     } else {
         $msg .= "• **Chyby:** Žádné! Vše v pořádku. 🎉\n";
+        $dbMsg .= ", Vše v pořádku bez chyb.";
     }
     
     $msg .= "• **Doba běhu:** {$elapsed} s";
     
     echo "[Cron] Aktualizace dokončena: {$updated} OK, {$failed} chyb za {$elapsed}s\n";
     sendNotification($msg);
+    
+    // Zápis do DB (Stav 'error' dáme pouze v případě, že selhaly kompletně všechny tickery)
+    $status = ($failed === $total && $total > 0) ? 'error' : 'success';
+    logCronExecution($pdo, 'prices', $status, $dbMsg, $elapsed);
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * LOGOVACÍ FUNKCE (SEBE-LÉČÍCÍ SE TABULKA)
+ * -----------------------------------------------------------------------------
+ */
+
+/**
+ * Ujistí se, že existuje tabulka pro logování úkolů
+ */
+function ensureCronLogsTableExists(PDO $pdo) {
+    try {
+        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'pgsql') {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS cron_logs (
+                id SERIAL PRIMARY KEY,
+                action VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                message TEXT,
+                duration DECIMAL(10, 2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )");
+        } else {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS cron_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                action VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                message TEXT,
+                duration DECIMAL(10, 2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )");
+        }
+    } catch (Exception $e) {
+        error_log("[Cron] Error creating cron_logs table: " . $e->getMessage());
+    }
+}
+
+/**
+ * Zapíše spuštění úlohy do DB
+ */
+function logCronExecution(PDO $pdo, $action, $status, $message, $duration) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO cron_logs (action, status, message, duration) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$action, $status, $message, $duration]);
+    } catch (Exception $e) {
+        error_log("[Cron] Error logging execution: " . $e->getMessage());
+    }
 }
 
 /**

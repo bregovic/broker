@@ -39,7 +39,8 @@ import {
     BuildingRegular,
     CurrencyDollarEuroRegular,
     TagRegular,
-    ArrowImportRegular
+    ArrowImportRegular,
+    HistoryRegular
 } from '@fluentui/react-icons';
 
 const useStyles = makeStyles({
@@ -129,12 +130,28 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
         setLookupTable(table);
         setLoadingLookup(true);
         try {
-            const res = await axios.get(getApiUrl(`api-admin-lookup.php?table=${table}`));
+            const url = table === 'cron_logs' ? getApiUrl('api-cron-logs.php') : getApiUrl(`api-admin-lookup.php?table=${table}`);
+            const res = await axios.get(url);
             if (res.data.success) {
                 setLookupData(res.data.data);
             }
         } catch (e) {
             console.error("Lookup load failed", e);
+        } finally {
+            setLoadingLookup(false);
+        }
+    };
+
+    const clearCronLogs = async () => {
+        if (!confirm("Opravdu vymazat celou historii logů?")) return;
+        setLoadingLookup(true);
+        try {
+            const res = await axios.delete(getApiUrl('api-cron-logs.php'));
+            if (res.data.success) {
+                setLookupData([]);
+            }
+        } catch (e) {
+            alert("Smazání historie selhalo.");
         } finally {
             setLoadingLookup(false);
         }
@@ -160,60 +177,129 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                     <DialogContent className={styles.content}>
                         
                         {lookupTable ? (
-                            <div className={styles.adminBox}>
+                            <div className={styles.adminBox} style={{ maxWidth: '100%', width: '100%', boxSizing: 'border-box' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
                                     <Button icon={<ArrowLeftRegular />} onClick={() => setLookupTable(null)} appearance="subtle" />
-                                    <Text size={500} weight="bold">{t(lookupTable.startsWith('admin.') ? lookupTable : `admin.${lookupTable}`) || lookupTable}</Text>
+                                    <Text size={500} weight="bold">
+                                        {lookupTable === 'cron_logs' ? 'Historie automatických úloh (Cron)' : 
+                                         (t(lookupTable.startsWith('admin.') ? lookupTable : `admin.${lookupTable}`) || lookupTable)}
+                                    </Text>
                                     <div style={{ flexGrow: 1 }} />
-                                    <Button icon={<AddRegular />} appearance="primary" size="small">Přidat</Button>
+                                    {lookupTable === 'cron_logs' ? (
+                                        <Button icon={<DeleteRegular />} appearance="secondary" size="small" style={{ color: tokens.colorPaletteRedForeground1 }} onClick={clearCronLogs}>Vymazat logy</Button>
+                                    ) : (
+                                        <Button icon={<AddRegular />} appearance="primary" size="small">Přidat</Button>
+                                    )}
                                 </div>
                                 
-                                {loadingLookup ? <Spinner /> : (
-                                    <div style={{ maxHeight: '300px', overflowY: 'auto', border: `1px solid ${tokens.colorNeutralStroke2}`, borderRadius: '4px' }}>
-                                        <Table size="small">
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHeaderCell>
-                                                        {lookupTable === 'brokers' ? 'Název broker' : 
-                                                         lookupTable === 'currencies' ? 'Kód měny' : 
-                                                         lookupTable === 'broker_import_rules' ? 'Konfigurace importu' : 
-                                                         'Název'}
-                                                    </TableHeaderCell>
-                                                    <TableHeaderCell style={{ width: '40px' }}>Akce</TableHeaderCell>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {lookupData.map((row, idx) => (
-                                                    <TableRow key={idx}>
-                                                        <TableCell>
-                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                <Text weight="semibold">{row.name || row.currency || row.config_name}</Text>
-                                                                {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Typ: {row.parser_type || 'generic'}</Text>}
-                                                                {lookupTable === 'currencies' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Zdroj: {row.source || 'CNB'}</Text>}
-                                                                {lookupTable === 'broker_import_rules' && (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Broker: <Text weight="bold" size={100}>{row.broker_name}</Text></Text>
-                                                                        <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_class.split('\\').pop()}</Text>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {(row.id || row.currency) && (
-                                                                <Button 
-                                                                    icon={<DeleteRegular />} 
-                                                                    appearance="subtle" 
-                                                                    onClick={() => deleteItem(row.id || row.currency)} 
-                                                                    style={{ color: tokens.colorPaletteRedForeground1 }}
-                                                                    title="Smazat záznam"
-                                                                />
-                                                            )}
-                                                        </TableCell>
+                                {lookupTable === 'cron_logs' ? (
+                                    loadingLookup ? <Spinner label="Načítám logy..." /> : (
+                                        <div style={{ maxHeight: '350px', overflowY: 'auto', border: `1px solid ${tokens.colorNeutralStroke2}`, borderRadius: '8px' }}>
+                                            <Table size="small">
+                                                <TableHeader style={{ backgroundColor: '#f8f9fa' }}>
+                                                    <TableRow>
+                                                        <TableHeaderCell style={{ width: '130px' }}>Čas spuštění</TableHeaderCell>
+                                                        <TableHeaderCell style={{ width: '90px' }}>Úloha</TableHeaderCell>
+                                                        <TableHeaderCell style={{ width: '80px' }}>Stav</TableHeaderCell>
+                                                        <TableHeaderCell>Detail zprávy</TableHeaderCell>
+                                                        <TableHeaderCell style={{ width: '70px', textAlign: 'right' }}>Trvání</TableHeaderCell>
                                                     </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {lookupData.length === 0 && (
+                                                        <TableRow>
+                                                            <TableCell colSpan={5}>
+                                                                <div style={{ padding: '30px', textAlign: 'center' }}>
+                                                                    <Text italic>Žádné záznamy o spuštění úloh nejsou k dispozici.</Text>
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )}
+                                                    {lookupData.map((row, idx) => (
+                                                        <TableRow key={idx}>
+                                                            <TableCell style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                                                {new Date(row.created_at).toLocaleString('cs-CZ', { 
+                                                                    day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' 
+                                                                })}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <span style={{ fontWeight: 'bold', fontSize: '11px' }}>
+                                                                    {row.action === 'rates' ? 'ČNB Kurzy' : 'Ceny Akcií'}
+                                                                </span>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <span style={{ 
+                                                                    backgroundColor: row.status === 'success' ? '#e6ffed' : '#ffeef0', 
+                                                                    color: row.status === 'success' ? '#22863a' : '#d73a49', 
+                                                                    padding: '2px 6px', 
+                                                                    borderRadius: '4px',
+                                                                    fontWeight: 'bold',
+                                                                    fontSize: '10px',
+                                                                    textTransform: 'uppercase'
+                                                                }}>
+                                                                    {row.status === 'success' ? 'OK' : 'CHYBA'}
+                                                                </span>
+                                                            </TableCell>
+                                                            <TableCell style={{ fontSize: '11px', color: tokens.colorNeutralForeground2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                                                {row.message}
+                                                            </TableCell>
+                                                            <TableCell style={{ fontSize: '11px', textAlign: 'right', fontWeight: 'semibold', paddingRight: '12px' }}>
+                                                                {row.duration !== null ? `${row.duration}s` : '-'}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )
+                                ) : (
+                                    loadingLookup ? <Spinner /> : (
+                                        <div style={{ maxHeight: '300px', overflowY: 'auto', border: `1px solid ${tokens.colorNeutralStroke2}`, borderRadius: '4px' }}>
+                                            <Table size="small">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHeaderCell>
+                                                            {lookupTable === 'brokers' ? 'Název broker' : 
+                                                             lookupTable === 'currencies' ? 'Kód měny' : 
+                                                             lookupTable === 'broker_import_rules' ? 'Konfigurace importu' : 
+                                                             'Název'}
+                                                        </TableHeaderCell>
+                                                        <TableHeaderCell style={{ width: '40px' }}>Akce</TableHeaderCell>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {lookupData.map((row, idx) => (
+                                                        <TableRow key={idx}>
+                                                            <TableCell>
+                                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                    <Text weight="semibold">{row.name || row.currency || row.config_name}</Text>
+                                                                    {lookupTable === 'brokers' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Typ: {row.parser_type || 'generic'}</Text>}
+                                                                    {lookupTable === 'currencies' && <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Zdroj: {row.source || 'CNB'}</Text>}
+                                                                    {lookupTable === 'broker_import_rules' && (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                            <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Broker: <Text weight="bold" size={100}>{row.broker_name}</Text></Text>
+                                                                            <Text size={100} style={{ color: tokens.colorNeutralForeground4 }}>Parser: {row.parser_class.split('\\').pop()}</Text>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {(row.id || row.currency) && (
+                                                                    <Button 
+                                                                        icon={<DeleteRegular />} 
+                                                                        appearance="subtle" 
+                                                                        onClick={() => deleteItem(row.id || row.currency)} 
+                                                                        style={{ color: tokens.colorPaletteRedForeground1 }}
+                                                                        title="Smazat záznam"
+                                                                    />
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )
                                 )}
                             </div>
                         ) : (
@@ -279,6 +365,13 @@ export const SettingsDialog = ({ open, onOpenChange }: { open: boolean, onOpenCh
                                                     <Button size="large" icon={<CurrencyDollarEuroRegular />} onClick={() => loadLookup('currencies')}>{t('admin.currencies')}</Button>
                                                     <Button size="large" icon={<TagRegular />} onClick={() => loadLookup('asset_types')}>{t('admin.asset_types')}</Button>
                                                     <Button size="large" icon={<ArrowImportRegular />} onClick={() => loadLookup('broker_import_rules')}>{t('admin.import_rules')}</Button>
+                                                </div>
+                                            </div>
+
+                                            <div className={styles.section}>
+                                                <Text weight="semibold"><HistoryRegular style={{ verticalAlign: 'middle', marginRight: '5px' }} /> Automatické úlohy (Cron)</Text>
+                                                <div className={styles.adminGrid}>
+                                                    <Button size="large" icon={<HistoryRegular />} onClick={() => loadLookup('cron_logs')}>Logy úloh</Button>
                                                 </div>
                                             </div>
 
