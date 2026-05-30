@@ -303,25 +303,6 @@ const MarketPage = () => {
             }
         }),
         createTableColumn<MarketItem>({
-            columnId: 'ex_dividend_date',
-            compare: (a, b) => {
-                const da = a.ex_dividend_date ? new Date(a.ex_dividend_date).getTime() : 0;
-                const db = b.ex_dividend_date ? new Date(b.ex_dividend_date).getTime() : 0;
-                return da - db;
-            },
-            renderHeaderCell: () => 'Ex-div. datum',
-            renderCell: (item) => {
-                if (!item.ex_dividend_date) return <span className={styles.smallText}>-</span>;
-                const exDate = new Date(item.ex_dividend_date);
-                const isUpcoming = exDate.getTime() >= new Date().setHours(0,0,0,0);
-                return (
-                    <span style={isUpcoming ? { fontWeight: 600, color: tokens.colorPaletteGreenForeground1 } : { color: tokens.colorNeutralForeground3 }}>
-                        {exDate.toLocaleDateString(t('locale') === 'en' ? 'en-US' : 'cs-CZ')}
-                    </span>
-                );
-            }
-        }),
-        createTableColumn<MarketItem>({
             columnId: 'ath',
             compare: (a, b) => { const rA = a.high_52w ? (a.current_price / a.high_52w) : 0; const rB = b.high_52w ? (b.current_price / b.high_52w) : 0; return rA - rB; },
             renderHeaderCell: () => 'ATH',

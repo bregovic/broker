@@ -1,0 +1,25 @@
+-- Market overview UI labels (cs + en). Idempotent.
+INSERT INTO translations (label_key, lang, translation) VALUES
+ ('col_company','cs','Společnost'),     ('col_company','en','Company'),
+ ('col_sector','cs','Sektor'),          ('col_sector','en','Sector'),
+ ('col_exchange','cs','Burza'),         ('col_exchange','en','Exchange'),
+ ('col_price','cs','Cena'),             ('col_price','en','Price'),
+ ('col_change_pct','cs','Změna %'),     ('col_change_pct','en','Change %'),
+ ('col_trend','cs','Trend'),            ('col_trend','en','Trend'),
+ ('col_quality','cs','Kvalita'),        ('col_quality','en','Quality'),
+ ('col_since','cs','Na trhu od'),       ('col_since','en','On market since'),
+ ('col_actions','cs','Akce'),           ('col_actions','en','Actions'),
+ ('col_ticker','cs','Ticker'),          ('col_ticker','en','Ticker'),
+ ('sector_all','cs','Sektor: vše'),     ('sector_all','en','Sector: all'),
+ ('trend_ema','cs','EMA'),              ('trend_ema','en','EMA'),
+ ('btn_new','cs','Nový'),               ('btn_new','en','New'),
+ ('btn_add','cs','Přidat'),             ('btn_add','en','Add'),
+ ('btn_adding','cs','Přidávám…'),       ('btn_adding','en','Adding…'),
+ ('btn_cancel','cs','Zrušit'),          ('btn_cancel','en','Cancel'),
+ ('btn_refresh','cs','Obnovit'),        ('btn_refresh','en','Refresh'),
+ ('btn_update_prices','cs','Aktualizovat ceny'), ('btn_update_prices','en','Update prices'),
+ ('filter_watched_on','cs','Jen sledované'),     ('filter_watched_on','en','Watched only'),
+ ('filter_watched_off','cs','Všechny'),          ('filter_watched_off','en','All'),
+ ('add_ticker_title','cs','Přidat ticker'),      ('add_ticker_title','en','Add ticker'),
+ ('loading_data','cs','Načítám…'),      ('loading_data','en','Loading…')
+ON CONFLICT (label_key, lang) DO UPDATE SET translation = EXCLUDED.translation;
