@@ -27,6 +27,12 @@ function quality_score(array $prices): int {
 
     $longevity = min($years / 12.0, 1.0);                  // full at ~12 years on market
 
+    // Proximity to the all-time high: a stock trading far below its peak that never
+    // recovered (e.g. AIG at ~4% of its pre-2008 high) is impaired, not quality.
+    $ath = max($prices);
+    $now = $prices[count($prices) - 1];
+    $proximity = $ath > 0 ? max(0.0, min($now / $ath, 1.0)) : 0.0;
+
     // Resilience bonus: deep crashes (>=60% from ATH) that fully recovered, last ~12y.
     $rw = count($prices) > 3000 ? array_slice($prices, -3000) : $prices;
     $r = 0.0; $peak = 0.0; $inCrash = false; $crashPeak = 0.0; $trough = 0.0;
@@ -41,5 +47,5 @@ function quality_score(array $prices): int {
     }
     $bonus = min(($r * 100) / 12.0, 10.0);
 
-    return (int) round(35 * $growth + 35 * $stability + 20 * $longevity + $bonus);
+    return (int) round(25 * $growth + 20 * $stability + 30 * $proximity + 15 * $longevity + $bonus);
 }
