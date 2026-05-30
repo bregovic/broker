@@ -47,5 +47,10 @@ function quality_score(array $prices): int {
     }
     $bonus = min(($r * 100) / 12.0, 10.0);
 
-    return (int) round(25 * $growth + 20 * $stability + 30 * $proximity + 15 * $longevity + $bonus);
+    // ATH proximity acts as a GATE (multiplier), not just an additive term, so a
+    // stock that rose, peaked and then permanently fell — never returning near its
+    // high — is pulled down no matter how strong its recent growth looks.
+    $base = 35 * $growth + 35 * $stability + 20 * $longevity + $bonus; // 0..100
+    $factor = 0.30 + 0.70 * $proximity;                                // 1.0 at ATH, 0.3 if far below
+    return (int) round($base * $factor);
 }
