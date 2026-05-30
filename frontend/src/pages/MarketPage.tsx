@@ -79,6 +79,7 @@ interface MarketItem {
     industry?: string;
     market_cap?: number;
     pe_ratio?: number;
+    on_market_since?: number;
 }
 
 const ChartModal = ({ open, ticker, currency, companyName, onClose }: { open: boolean, ticker: string, currency: string, companyName: string, onClose: () => void }) => {
@@ -343,13 +344,19 @@ const MarketPage = () => {
         createTableColumn<MarketItem>({
             columnId: 'resilience',
             compare: (a, b) => (a.resilience_score || 0) - (b.resilience_score || 0),
-            renderHeaderCell: () => 'Odolnost',
+            renderHeaderCell: () => t('col_quality') || 'Kvalita',
             renderCell: (item) => {
                 const val = item.resilience_score || 0;
-                return val > 0
-                    ? <Badge appearance="filled" color="success" shape="rounded" size="small">{val}x</Badge>
-                    : <span className={styles.smallText} style={{ color: tokens.colorNeutralForeground4 }}>-</span>;
+                if (val <= 0) return <span className={styles.smallText} style={{ color: tokens.colorNeutralForeground4 }}>-</span>;
+                const color = val >= 70 ? 'success' : val >= 45 ? 'warning' : 'informative';
+                return <Badge appearance="filled" color={color} shape="rounded" size="small">{val}</Badge>;
             }
+        }),
+        createTableColumn<MarketItem>({
+            columnId: 'since',
+            compare: (a, b) => (a.on_market_since || 9999) - (b.on_market_since || 9999),
+            renderHeaderCell: () => t('col_since') || 'Na trhu od',
+            renderCell: (item) => <span className={styles.smallText}>{item.on_market_since || '-'}</span>
         }),
         createTableColumn<MarketItem>({ columnId: 'actions', renderHeaderCell: () => t('col_actions'), renderCell: (item) => <Button icon={<Line24Regular />} size="small" appearance="subtle" onClick={() => setChartTicker(item.ticker)}>Graf</Button> })
     ];

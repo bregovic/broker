@@ -75,6 +75,7 @@ $sql = "SELECT DISTINCT src.ticker,
                l.industry,
                l.market_cap,
                l.pe_ratio,
+               (SELECT EXTRACT(YEAR FROM MIN(history_date))::int FROM tickers_history h2 WHERE h2.ticker = src.ticker) AS on_market_since,
                l.last_fetched,
                CASE WHEN w.ticker IS NOT NULL THEN 1 ELSE 0 END as is_watched
         FROM (
