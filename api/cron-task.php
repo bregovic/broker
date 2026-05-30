@@ -90,6 +90,12 @@ function runRatesImport(PDO $pdo) {
             }
             
             if ($xml !== false) {
+                // Dynamicky získáme přesné datum platnosti kurzů přímo z XML ČNB
+                $dateAttr = (string)$xml['datum'];
+                if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})/', $dateAttr, $m)) {
+                    $ymd = "{$m[3]}-{$m[2]}-{$m[1]}";
+                }
+                
                 $rows = $xml->xpath('//radek');
                 if ($rows && count($rows) > 0) {
                     // Vložíme základní CZK
@@ -126,6 +132,11 @@ function runRatesImport(PDO $pdo) {
             if ($body !== false && ($info['http_code'] ?? 0) < 400) {
                 $lines = preg_split('/\r\n|\r|\n/', trim($body));
                 if (count($lines) >= 3) {
+                    // Dynamicky získáme datum z prvního řádku TXT
+                    if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})/', $lines[0], $m)) {
+                        $ymd = "{$m[3]}-{$m[2]}-{$m[1]}";
+                    }
+                    
                     $rows = array_slice($lines, 2);
                     upsertRate($pdo, $ymd, 'CZK', 1, 1.0, 'CNB', $ins, $upd);
                     

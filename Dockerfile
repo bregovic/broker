@@ -10,12 +10,14 @@ RUN npm run build
 FROM trafex/php-nginx:3.5.0
 USER root
 
-# Instalace DB ovladačů pro PHP (MySQL a PostgreSQL)
+# Instalace DB ovladačů pro PHP (MySQL a PostgreSQL) a SimpleXML
 RUN apk add --no-cache \
     php83-pdo_mysql \
     php83-mysqlnd \
     php83-pdo_pgsql \
     php83-pgsql \
+    php83-simplexml \
+    php83-xml \
     poppler-utils
 
 # Kopírujeme Nginx konfiguraci
