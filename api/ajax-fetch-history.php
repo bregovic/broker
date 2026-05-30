@@ -173,7 +173,10 @@ try {
         // Shared Cache Check
         $hasCache = false;
         try {
-            $startTolDate = date('Y-m-d', strtotime('+5 days', $start));
+            // "Already downloaded" = we hold history from at least ~1 year back up to
+            // recent. Don't require data all the way to the requested start (for 'max'
+            // that's decades ago and no stock would ever match -> it'd always refetch).
+            $startTolDate = date('Y-m-d', max(strtotime('+5 days', $start), strtotime('-1 year')));
             $endTolDate = date('Y-m-d', strtotime('-3 days', $end));
             
             $stmtStart = $pdo->prepare("SELECT COUNT(*) FROM tickers_history WHERE ticker = ? AND $dateColumn <= ?");

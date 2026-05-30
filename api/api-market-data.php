@@ -55,7 +55,7 @@ $baseRate = $rates[$baseCurrency] ?? 1.0; // CZK per 1 unit of the base currency
 
 // 1. Get tickers with meta - matching new schema (ticker instead of id, price instead of current_price)
 $sql = "SELECT DISTINCT src.ticker, 
-               COALESCE(t.company_name, src.ticker) as company_name, 
+               COALESCE(NULLIF(t.company_name, ''), NULLIF(l.company_name, ''), src.ticker) as company_name,
                COALESCE(NULLIF(l.current_price, 0), NULLIF(l.price, 0), q.price) as current_price,
                l.change_percent,
                l.change_amount as change_absolute,
