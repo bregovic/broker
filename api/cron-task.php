@@ -199,13 +199,20 @@ function runRatesImport(PDO $pdo) {
  * Pomocný upsert pro kurzy
  */
 function upsertRate(PDO $pdo, $date, $code, $amount, $rate, $src, &$ins, &$upd) {
-    $s = $pdo->prepare("SELECT rate_id FROM rates WHERE date=? AND currency=? LIMIT 1");
+    $s = $pdo->prepare("SELECT count(*) FROM rates WHERE date=? AND currency=?");
     $s->execute([$date, $code]);
-    $id = $s->fetchColumn();
+    $exists = $s->fetchColumn() > 0;
     
-    if ($id) {
-        $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=?, updated_at=CURRENT_TIMESTAMP WHERE rate_id=?");
-        $u->execute([$rate, $amount, $src, $id]);
+    if ($exists) {
+        // Zkusíme aktualizovat i sloupec updated_at (používá se v MySQL)
+        // Pokud v PostgreSQL neexistuje, chytíme výjimku a provedeme standardní update
+        try {
+            $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=?, updated_at=CURRENT_TIMESTAMP WHERE date=? AND currency=?");
+            $u->execute([$rate, $amount, $src, $date, $code]);
+        } catch (Exception $e) {
+            $u = $pdo->prepare("UPDATE rates SET rate=?, amount=?, source=? WHERE date=? AND currency=?");
+            $u->execute([$rate, $amount, $src, $date, $code]);
+        }
         $upd++;
     } else {
         $i = $pdo->prepare("INSERT INTO rates (date, currency, rate, amount, source) VALUES (?, ?, ?, ?, ?)");
