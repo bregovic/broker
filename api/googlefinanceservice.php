@@ -320,8 +320,8 @@ class GoogleFinanceService
                     dividend_yield = ?,
                     dividend_rate = ?,
                     five_year_avg_yield = ?,
-                    sector = COALESCE(?, sector),
-                    industry = COALESCE(?, industry),
+                    sector = COALESCE(NULLIF(sector, ''), ?),
+                    industry = COALESCE(NULLIF(industry, ''), ?),
                     market_cap = COALESCE(?, market_cap),
                     pe_ratio = COALESCE(?, pe_ratio)
                     WHERE ticker = ?";

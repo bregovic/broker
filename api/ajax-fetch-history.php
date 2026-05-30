@@ -353,6 +353,21 @@ try {
             }
         }
 
+        // Fill missing market fundamentals (dividend yield, market cap, P/E, exchange)
+        // via the crumb-authenticated quote — only for tickers that lack them, so
+        // already-updated / held names are not re-fetched. Runs even when the history
+        // itself was cached, so newly added (e.g. S&P 500) tickers get their dividends.
+        try {
+            $needFund = $pdo->prepare("SELECT 1 FROM live_quotes WHERE id = ? AND (dividend_yield IS NULL OR market_cap IS NULL OR exchange IS NULL OR exchange = '') LIMIT 1");
+            $needFund->execute([$originalTicker]);
+            if ($needFund->fetchColumn()) {
+                require_once __DIR__ . '/googlefinanceservice.php';
+                (new GoogleFinanceService($pdo, 0))->getQuote($originalTicker, true);
+            }
+        } catch (Exception $e) {
+            error_log("ajax-fetch-history fundamentals fill failed for $originalTicker: " . $e->getMessage());
+        }
+
         // --- STATS CALC (EMA, ATH) ---
         // Fetch full history now (sorted)
         // Fetch full history now (sorted)
