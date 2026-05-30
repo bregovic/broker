@@ -366,43 +366,30 @@ try {
             $weeklyPrices = resampleToWeekly($rows);
             $ema = calcEMA($weeklyPrices, 212);
             
-            // Resilience (Count of recoveries from >30% drops)
-            // Logic: Cycle based. 
-            // 1. Establish Peak.
-            // 2. If drops > 30% from Peak -> Crash.
-            // 3. If recovers to > 85% of Peak -> Recovery (+1), and Peak resets (to capture next local cycle).
-            
-            $resilience = 0;
-            $peak = 0;
-            $inCrash = false;
-            
-            foreach ($allPrices as $p) {
+            // Resilience = sum of the depths of DEEP crashes that fully recovered
+            // ("risen from the ashes"), scaled x100. Deeper + more frequent recoveries
+            // score higher. A crash not yet recovered is NOT counted (unproven), so a
+            // stock that only rose then fell, or never crashed deep, scores 0.
+            $CRASH = 0.60;    // fall of >= 60% from the running ATH = a deep crash ("near the bottom")
+            $RECOVER = 1.00;  // back to the prior ATH = proven full recovery
+            $RWINDOW = 3000;  // only the last ~12 years of daily data (skip penny-stock-era noise)
+            $rprices = count($allPrices) > $RWINDOW ? array_slice($allPrices, -$RWINDOW) : $allPrices;
+            $resilience = 0.0; $peak = 0.0; $inCrash = false; $crashPeak = 0.0; $trough = 0.0;
+            foreach ($rprices as $p) {
                 if ($p <= 0) continue;
-                
-                if ($p > $peak) {
-                    // New High
-                    if ($inCrash) {
-                        // Recovered to new High (Automatic recovery)
-                        $resilience++;
-                        $inCrash = false;
-                    }
-                    $peak = $p;
+                if (!$inCrash) {
+                    if ($p > $peak) $peak = $p;
+                    if ($peak > 0 && ($peak - $p) / $peak >= $CRASH) { $inCrash = true; $crashPeak = $peak; $trough = $p; }
                 } else {
-                    // Check Recovery condition
-                    if ($inCrash && $p >= $peak * 0.85) {
-                        $resilience++;
+                    if ($p < $trough) $trough = $p;
+                    if ($crashPeak > 0 && $p >= $crashPeak * $RECOVER) {
+                        $resilience += ($crashPeak - $trough) / $crashPeak; // depth of the recovered crash
                         $inCrash = false;
-                        // Reset Peak to current level to start tracking local cycle (e.g. for IBM 2020 dip inside long stagnation)
-                        $peak = $p;
-                    }
-                    
-                    // Check Drop
-                    $dd = ($peak - $p) / ($peak ?: 1);
-                    if ($dd > 0.30 && !$inCrash) {
-                        $inCrash = true;
+                        if ($p > $peak) $peak = $p;
                     }
                 }
             }
+            $resilience = (int) round($resilience * 100);
 
             $sqlUpd = "UPDATE live_quotes SET all_time_high=?, all_time_low=?, ema_212=?, resilience_score=? WHERE id=?";
             $pdo->prepare($sqlUpd)->execute([$ath, $atl, $ema, $resilience, $originalTicker]);

@@ -75,18 +75,29 @@ try {
             if ($ath === null || $p > $ath) $ath = $p;
             if ($atl === null || $p < $atl) $atl = $p;
         }
-        $resilience = 0; $peak = 0; $inCrash = false;
-        foreach ($allPrices as $p) {
+        // Resilience = sum of the depths of DEEP crashes that fully recovered
+        // ("risen from the ashes"), scaled x100. Deeper + more frequent recoveries
+        // score higher. A crash not yet recovered is NOT counted (unproven).
+        $CRASH = 0.60;    // fall of >= 60% from the running ATH = a deep crash ("near the bottom")
+        $RECOVER = 1.00;  // back to the prior ATH = proven full recovery
+        $RWINDOW = 3000;  // only the last ~12 years of daily data (skip penny-stock-era noise)
+        $rprices = count($allPrices) > $RWINDOW ? array_slice($allPrices, -$RWINDOW) : $allPrices;
+        $resilience = 0.0; $peak = 0.0; $inCrash = false; $crashPeak = 0.0; $trough = 0.0;
+        foreach ($rprices as $p) {
             if ($p <= 0) continue;
-            if ($p > $peak) {
-                if ($inCrash) { $resilience++; $inCrash = false; }
-                $peak = $p;
+            if (!$inCrash) {
+                if ($p > $peak) $peak = $p;
+                if ($peak > 0 && ($peak - $p) / $peak >= $CRASH) { $inCrash = true; $crashPeak = $peak; $trough = $p; }
             } else {
-                if ($inCrash && $p >= $peak * 0.85) { $resilience++; $inCrash = false; $peak = $p; }
-                $dd = ($peak - $p) / ($peak ?: 1);
-                if ($dd > 0.30 && !$inCrash) { $inCrash = true; }
+                if ($p < $trough) $trough = $p;
+                if ($crashPeak > 0 && $p >= $crashPeak * $RECOVER) {
+                    $resilience += ($crashPeak - $trough) / $crashPeak; // depth of the recovered crash
+                    $inCrash = false;
+                    if ($p > $peak) $peak = $p;
+                }
             }
         }
+        $resilience = (int) round($resilience * 100);
 
         // Update DB
         $upd = $pdo->prepare("UPDATE live_quotes SET high_52w = ?, low_52w = ?, ema_212 = ?, all_time_high = ?, all_time_low = ?, resilience_score = ? WHERE id = ?");
