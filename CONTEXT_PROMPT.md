@@ -5,8 +5,9 @@
 > - [`.agent/FORM_STANDARD.md`](.agent/FORM_STANDARD.md) — UI, forms & mobile layout rules.
 > - [`.agent/SOP.md`](.agent/SOP.md) — how to make a change safely (workflow + checklist).
 > - [`.agent/DB_STATE.md`](.agent/DB_STATE.md) — **verified prod schema, data conventions & known gaps. Read before touching the DB.**
+> - [`.agent/MARKET_OVERVIEW.md`](.agent/MARKET_OVERVIEW.md) — Market overview data sources, the S&P 500 universe & the **Kvalita** quality score.
 >
-> _Last reviewed: 2026-05-29. Keep this header date current when you make structural changes._
+> _Last reviewed: 2026-06-02. Keep this header date current when you make structural changes._
 
 ## Project Summary
 **Investyx** is a focused trading / portfolio-management app (stocks, crypto, dividends, P&L, multi-broker imports). It is the actively developed product (repo `bregovic/broker.git`, Railway project "Investyx 2.0"). It was modernized from a legacy Wedos/MySQL app to **Railway + PostgreSQL + Docker**, and still keeps MySQL compatibility for local/legacy use.
@@ -126,11 +127,23 @@ Broker statements (PDF/CSV) are turned into `transactions`. There are currently 
 See [`.agent/SOP.md`](.agent/SOP.md) for the full step-by-step. In short:
 - **New feature / fix**: make the change → `npm run build` must pass → record it in `RELEASE_NOTES.md` → commit (Conventional Commits) → push `main` (deploys).
 - **Schema changes**: keep cross-driver (MySQL + PostgreSQL); reflect new tables/columns in `api/init_broker.php` so fresh environments bootstrap correctly.
-- **Labels / i18n**: UI labels are served by `api/api-translations.php` from the `translations` table; seed new labels in `api/init_broker.php`.
+- **Labels / i18n**: the frontend loads labels from **`api/v3/api-labels.php`, which reads the JSON files `api/v3/translations/{cs,en}.json`** — add new keys there (NOT only the DB `translations` table, which `api-translations.php` serves but the app doesn't use for these). A missing key renders as the raw key.
 - **UI / forms**: follow [`.agent/FORM_STANDARD.md`](.agent/FORM_STANDARD.md) (Fluent UI v9, drawer-based forms, mobile-first).
 
-## Current Focus
-- **Consolidate import** onto the `api/v3/Import` OO layer; reach broker parity (add Trading212 / Coinbase / eToro to v3) and retire `api/js/parsers`.
-- **Port framework pieces from SHANON**: mobile-optimized forms (drawer pattern), `SmartDataGrid`/`ActionBar`, settings dialog, keyboard shortcuts.
-- Respect `base_currency` from `user_settings` in all financial displays.
+## Recently done (2026-05-29 → 06-03)
+- **FX correctness**: import now converts via the `rates` table (`resolveRate` queried
+  it on all drivers + self-heals missing dates from ČNB single-currency endpoint);
+  fixed corrupted 2022 USD history (ČNB dropped RUB → yearly-file column shift).
+- **Market overview**: added S&P 500 universe, sector/industry/market-cap/P-E/exchange,
+  CZK conversion, sector filter, and the **Kvalita** score. See `.agent/MARKET_OVERVIEW.md`.
+- **P&L**: FX-difference + fees breakdown; case-insensitive `trans_type`.
+- **i18n labels** live in `api/v3/translations/*.json` (see Critical Workflows).
+
+## Current Focus / next
+- **Populate the S&P 500 data**: run "Aktualizovat historii (max)" (now skips already-
+  downloaded names and backfills dividend/market-cap/exchange in the same pass).
+- **Consolidate import** onto the `api/v3/Import` OO layer; add Trading212 / Coinbase /
+  eToro to v3 and retire `api/js/parsers`.
+- **Port framework pieces from SHANON**: drawer forms, `SmartDataGrid`/`ActionBar`,
+  settings dialog, keyboard shortcuts.
 - Continue auditing legacy `/api/` files for hardcoded MySQL connections (use `get_pdo()`).
