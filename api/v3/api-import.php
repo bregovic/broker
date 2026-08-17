@@ -313,9 +313,29 @@ try {
                     $colsStr = implode(', ', $insertCols);
                     $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
                     
+                    /*
+                     * Duplicita se musí posuzovat POUZE v rámci uživatele.
+                     * Dřív tu bylo ON CONFLICT (broker_trade_id), jenže číslo
+                     * obchodu přiděluje broker, ne naše aplikace — takže jakmile
+                     * měl obchod stejné číslo jako obchod jiného uživatele,
+                     * vložení se tiše přeskočilo. Na novém účtu se tím pádem
+                     * jako duplicita vyhodnotilo úplně všechno.
+                     *
+                     * Složený unikátní index (user_id, broker_trade_id) nemusí
+                     * v databázi existovat, proto se na ON CONFLICT nespoléháme
+                     * a duplicitu kontrolujeme dotazem omezeným na uživatele.
+                     */
                     $conflictClause = "";
-                    if ($driver === 'pgsql' && in_array('broker_trade_id', $existingCols)) {
-                        $conflictClause = " ON CONFLICT (broker_trade_id) DO NOTHING";
+
+                    if (in_array('broker_trade_id', $existingCols) && !empty($data['broker_trade_id'])) {
+                        $stmtDup = $db->prepare(
+                            "SELECT 1 FROM transactions WHERE user_id = ? AND broker_trade_id = ? LIMIT 1"
+                        );
+                        $stmtDup->execute([$userId, $data['broker_trade_id']]);
+                        if ($stmtDup->fetchColumn()) {
+                            $skipped++;
+                            continue;
+                        }
                     }
                     
                     $sql = "INSERT INTO transactions ($colsStr) VALUES ($placeholders)" . $conflictClause;
