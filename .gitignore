@@ -23,3 +23,6 @@ deploy/.deploy-cache-*.json
 *.log
 broker_deploy.zip
 manual_deploy.ps1
+
+# Ukazkove vypisy z brokera - obsahuji skutecna financni data
+example/
