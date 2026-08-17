@@ -348,9 +348,18 @@ try {
                      * jako duplicitu a pokračujeme dál — dřív z toho byla
                      * "KRITICKÁ CHYBA" a nenahrálo se vůbec nic.
                      */
+                    /*
+                     * Bod obnovy kolem každého řádku. V Postgresu shodí jediný
+                     * neúspěšný příkaz celou transakci ("current transaction is
+                     * aborted") a všechno další už jen padá. Se SAVEPOINT se
+                     * vrátíme jen o ten jeden řádek zpět a dávka pokračuje.
+                     */
+                    $db->exec('SAVEPOINT radek');
                     try {
                         $stmtIns->execute($insertVals);
+                        $db->exec('RELEASE SAVEPOINT radek');
                     } catch (\PDOException $e) {
+                        $db->exec('ROLLBACK TO SAVEPOINT radek');
                         if (($e->getCode() ?? '') === '23505') { $skipped++; continue; }
                         throw $e;
                     }
