@@ -341,8 +341,20 @@ try {
                     $sql = "INSERT INTO transactions ($colsStr) VALUES ($placeholders)" . $conflictClause;
                     
                     $stmtIns = $db->prepare($sql);
-                    $stmtIns->execute($insertVals);
-                    
+
+                    /*
+                     * Jedna kolize nesmí shodit celý import. Když databáze
+                     * odmítne řádek kvůli unikátnímu indexu (23505), bereme to
+                     * jako duplicitu a pokračujeme dál — dřív z toho byla
+                     * "KRITICKÁ CHYBA" a nenahrálo se vůbec nic.
+                     */
+                    try {
+                        $stmtIns->execute($insertVals);
+                    } catch (\PDOException $e) {
+                        if (($e->getCode() ?? '') === '23505') { $skipped++; continue; }
+                        throw $e;
+                    }
+
                     if ($stmtIns->rowCount() > 0) {
                         $inserted++;
                         if (!empty($data['ticker'])) {
