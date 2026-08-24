@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     php83-pgsql \
     php83-simplexml \
     php83-xml \
+    php83-zip \
     poppler-utils
 
 # Kopírujeme Nginx konfiguraci

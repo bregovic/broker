@@ -195,8 +195,9 @@ class ImportManager {
      */
     private function parserFitsFile(string $parserClass, string $filename): bool {
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-        if (strpos($parserClass, '\\Pdf\\') !== false) return $ext === 'pdf';
-        if (strpos($parserClass, '\\Csv\\') !== false) return in_array($ext, ['csv', 'txt', 'tsv'], true);
+        if (strpos($parserClass, '\\Pdf\\') !== false)  return $ext === 'pdf';
+        if (strpos($parserClass, '\\Csv\\') !== false)  return in_array($ext, ['csv', 'txt', 'tsv'], true);
+        if (strpos($parserClass, '\\Xlsx\\') !== false) return in_array($ext, ['xlsx', 'xlsm'], true);
         return true;
     }
 

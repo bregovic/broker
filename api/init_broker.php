@@ -104,6 +104,11 @@ try {
         ['ibkr_activity_csv', 'Interactive Brokers (Activity CSV)', 'Broker\\V3\\Import\\Csv\\IbkrCsvParser',
             'U\\d{6,}_\\d{4}_\\d{4}\\.csv',
             'Trades,Header,.*DataDiscriminator', 20],
+        // XLSX je ZIP, takže se v obsahu nedá nic hledat — obsah je zkomprimovaný.
+        // Prázdný content_regex discovery přeskočí a rozhodne název souboru.
+        ['etoro_xlsx', 'eToro Account Statement (XLSX)', 'Broker\\V3\\Import\\Xlsx\\EtoroXlsxParser',
+            'etoro.*\\.xlsx',
+            '', 20],
         // Coinbase pojmenovává export UUID, takže se pozná jen podle hlavičky.
         ['coinbase_csv', 'Coinbase Crypto (CSV)', 'Broker\\V3\\Import\\Csv\\CoinbaseCsvParser',
             'coinbase',
