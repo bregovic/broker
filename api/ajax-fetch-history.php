@@ -130,8 +130,24 @@ try {
             if ($alias) $ticker = $alias;
         } catch(Exception $e) {}
 
+        /*
+         * Založit řádek v live_quotes, pokud chybí. Všechny zápisy cen níž jsou
+         * UPDATE, takže bez existujícího řádku se cena tiše zahodila — přesně to
+         * potkalo papíry naimportované přes v3 import, který ticker neregistroval.
+         * Tahle pojistka spraví i tickery, které v databázi už takhle uvízly,
+         * bez nutnosti cokoli reimportovat.
+         */
+        // price i currency jsou NOT NULL bez defaultu, proto se zakládají prázdné;
+        // prázdnou měnu api-portfolio.php ignoruje a použije měnu pořizovací ceny,
+        // dokud ji fetch nepřepíše tou skutečnou z burzy.
+        try {
+            $pdo->prepare("INSERT INTO live_quotes (ticker, price, currency, status)
+                           VALUES (?, 0, '', 'active')
+                           ON CONFLICT (ticker) DO NOTHING")->execute([$originalTicker]);
+        } catch (Exception $e) {}
+
         $yahooTicker = mapTickerToYahoo($ticker);
-        
+
         // Time Range Logic
         $end = time();
         $start = strtotime('-2 years'); // Default for EMA
@@ -313,23 +329,31 @@ try {
                     // Extract Company Name
                     $cn = $qRes['longName'] ?? $qRes['shortName'] ?? '';
 
+                    // Měna kotace. Ukládá se, protože api-portfolio.php podle ní
+                    // přepočítává na CZK — bez ní se cena z pražské burzy ocenila
+                    // kurzem měny nákupu, což u IBKR (účtuje v CZK) sedělo jen náhodou.
+                    $qCur = strtoupper(trim((string)($qRes['currency']
+                        ?? $yahooData['meta']['currency'] ?? '')));
+
                     // Update live_quotes
-                    $sqlLQ = "UPDATE live_quotes SET 
-                              current_price = :p, 
+                    $sqlLQ = "UPDATE live_quotes SET
+                              current_price = :p,
                               price = :p,
                               change_amount = :ca,
                               change_percent = :cp,
                               last_fetched = NOW(),
                               source = 'yahoo',
                               exchange = :ex,
+                              currency = COALESCE(NULLIF(:cur, ''), NULLIF(currency, ''), ''),
                               company_name = COALESCE(NULLIF(:cn, ''), company_name)
                               WHERE id = :id";
-                    
+
                     $pdo->prepare($sqlLQ)->execute([
-                        ':p' => $lp * $factor, 
+                        ':p' => $lp * $factor,
                         ':ca' => $chg * $factor,
                         ':cp' => $chgPct,
                         ':ex' => $exchangeName,
+                        ':cur' => $qCur,
                         ':cn' => $cn,
                         ':id' => $originalTicker
                     ]);

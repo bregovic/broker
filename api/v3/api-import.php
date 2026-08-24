@@ -433,6 +433,22 @@ try {
                         $db->prepare("INSERT INTO watch (user_id, ticker) VALUES (?, ?) ON CONFLICT DO NOTHING")
                            ->execute([$userId, $ticker]);
                     } catch (\Exception $e) {}
+
+                    /*
+                     * Zaregistrovat ticker v live_quotes. Tenhle import to nikdy
+                     * nedělal, a protože `ajax-fetch-history.php` umí jen UPDATE,
+                     * neexistující řádek znamenal, že se cena nemá kam zapsat —
+                     * nově naimportované papíry (Fio, krypto) proto zůstaly navždy
+                     * bez ceny a portfolio bez celkové hodnoty.
+                     * Cenu nevyplňujeme, jen založíme řádek; naplní ho fetch.
+                     */
+                    try {
+                        $db->prepare(
+                            "INSERT INTO live_quotes (ticker, price, currency, status)
+                             VALUES (?, 0, '', 'active')
+                             ON CONFLICT (ticker) DO NOTHING"
+                        )->execute([$ticker]);
+                    } catch (\Exception $e) {}
                 }
             }
             
