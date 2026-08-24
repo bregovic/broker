@@ -1,5 +1,40 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (e)
+### Added — Fio banka PDF parser (both statement generations)
+Fio changed its statement format mid-history, which is why these files never imported.
+The generations are told apart by the summary column name, which changed together with
+the whole layout:
+
+| | znak | vzorky | tabulka operací |
+|---|---|---|---|
+| **Generace 1** | `Výnosy z CP` | 2020-01 … 2021-01 (5) | `Objem · Poplatky · Cena · Množství · Směr Trh Název`, datum `05.01.'21 10:14`, bez ISIN, sloupce v PDF **obráceně** |
+| **Generace 2** | `Výnosy z IN` | 2021-02 … dosud (19) | `Datum · Název · ISIN · Množství · Objem · Trh · Operace · Jedn. cena · ID operace · Upřesnění · Poplatky · Podíl PNO` |
+
+Pozdější výpisy generace 2 mají navíc `Spisová značka`, ale **tabulka operací je
+totožná** — ověřeno na 2024-01, které existuje ve dvou staženích (starším bez značky
+a novějším s ní) s identickou hlavičkou. Jeden parser tedy stačí na obě.
+
+- Měna se bere z nadpisu `Výpis operací v <MĚNA>`; jeden výpis má běžně sekci CZK i EUR.
+- ISIN → ticker (a názvy → ticker) převzato z `api/js/data/TickerMap.js`, dosud mrtvé
+  JS větve. Všech 24 vzorků se namapuje beze zbytku: CEZ, CTP, CZG, ERBAG, KOMB, MONET,
+  O2, TABAK.
+- **Pozor na čísla u ISINu.** Fio píše tisíce mezerou, takže naivní regex slepí koncovku
+  ISINu s množstvím: z `CZ0009093209 350,00` vznikne 209 350 místo 350. Bez lookbehind
+  na číslici i písmeno vycházely pozice ve statisících kusů.
+- Přeskakují se: převody mezi měnami, převody mezi vlastními účty a distribuce/odebrání
+  práv volitelné dividendy (CTP) — ta se připíšou a zase odepíšou a vytvořila by fiktivní
+  pozice. `Výplata emisního ážia` se naopak bere jako peněžní výnos (O2 ji platí místo
+  dividendy).
+- Výsledek na 24 vzorcích: **186 řádků → 121 transakcí**, 65 vynechaných řádků prošlo
+  ruční kontrolou a všechna jsou čísla stránek, hranice sekcí, převody nebo práva.
+  Žádná kolize otisků uvnitř souboru; napříč soubory se překryv čtvrtletních a ročních
+  výpisů korektně odbourá (121 → 112).
+
+> Otevřená otázka k datům, ne k parseru: čistá pozice KOMB vychází −91 ks. Výpisy
+> obsahují nákupy 39 ks, ale portfolio v 2021-02 už uvádí 130 ks — část historie
+> v archivu chybí, nebo byly papíry převedeny odjinud.
+
 ## [Unreleased] - 2026-08-24 (d)
 ### Added — IBKR Transaction History (CSV) parser
 IBKR's newest export (`U…TRANSACTIONS….csv`) had no parser; the file was matched on

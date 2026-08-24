@@ -107,6 +107,12 @@ try {
         ['ibkr_pdf', 'Interactive Brokers (PDF)', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser',
             'ibkr',
             'Interactive Brokers|TransactionsCZK|Time Period:', 30],
+        // Fio změnilo formát PDF výpisu v průběhu 2021 (a 2024 přidalo spisovou
+        // značku). Rozlišuje je až parser podle „Výnosy z CP“ vs „Výnosy z IN“;
+        // pro rozpoznání souboru stačí hlavička banky a nadpis tabulky operací.
+        ['fio_pdf', 'Fio banka (PDF)', 'Broker\\V3\\Import\\Pdf\\FioPdfParser',
+            'fio',
+            'Fio banka, a\\.s\\..*(Výpis operací v|Výpis z účtu)|Výnosy z (CP|IN)', 25],
         // No fio_csv rule on purpose: FioCsvParser is still an unfinished stub with a
         // placeholder column mapping, so registering it would only route files into a
         // parser that cannot handle them. Add the rule once the parser is real.
