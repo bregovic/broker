@@ -48,10 +48,13 @@ try {
             'SXR8'=>'SXR8.DE', 'RBOT'=>'RBOT.L', 'RENW'=>'RENW.L'
         ];
         if (isset($etfMap[$t])) return $etfMap[$t];
-        // CZ Stocks
-        $czStocks = ['CEZ', 'KB', 'MONET', 'ERBAG', 'KOMB', 'PHILIP', 'COLT', 'KOFOL'];
-        if (in_array($t, $czStocks)) return $t . '.PR';
-        
+        // Pražská burza. Dřív tu byl seznam, ke kterému se jen lepilo '.PR' — jenže
+        // obsahoval kódy, které Fio ani TickerMap nepoužívají ('KB', 'PHILIP', 'COLT'),
+        // takže se české papíry stejně neocenily. Mapa je teď sdílená a ověřená.
+        require_once __DIR__ . '/ticker_symbols.php';
+        $cz = bcpp_yahoo_symbol($t);
+        if ($cz !== null) return $cz;
+
         return $t;
     }
 

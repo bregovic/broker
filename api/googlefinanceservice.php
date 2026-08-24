@@ -868,6 +868,12 @@ class GoogleFinanceService
             $candidates = array_merge($candidates, $customMap[$ticker]);
         }
 
+        // Pražská burza má vlastní symboly (a ne vždy jen s příponou .PR) — zkusit
+        // je jako první, jinak by se ticker jako CZG nebo CTP marně hledal na US trhu.
+        require_once __DIR__ . '/ticker_symbols.php';
+        $cz = bcpp_yahoo_symbol($ticker);
+        if ($cz !== null) array_unshift($candidates, $cz);
+
         foreach ($candidates as $yTicker) {
             // First try fetching detailed quote using the cookie/crumb handshake
             $quote = $this->fetchYahooQuoteWithCrumb($yTicker);

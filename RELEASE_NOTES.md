@@ -1,5 +1,23 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (f)
+### Fixed — české papíry se nikdy neocenily (chybějící symboly pražské burzy)
+Bez aktuální ceny zůstávalo Fio portfolio v Bilanci na nule. Yahoo chce pro BCPP
+příponu `.PR`, jenže u části papírů se liší i samotný symbol.
+- Nový sdílený `api/ticker_symbols.php` s mapou **31 tickerů** ověřenou živým
+  dotazem (24. 8. 2026) — všechny vracejí cenu v **CZK**.
+- Dosavadní seznam v `ajax-fetch-history.php` lepil `.PR` na kódy `KB`, `PHILIP`
+  a `COLT`, které Fio ani `TickerMap` nepoužívají, takže reálně neocenil nic.
+- Symbol se neshoduje s kódem u `CZG → COLT.PR` a `CTP → CTPNV.PR`.
+- `googlefinanceservice.php` zkouší pražský symbol jako první, jinak by se český
+  ticker marně hledal na americkém trhu.
+- Bez zdroje zůstávají `O2` (v roce 2021 vytěsněno z burzy, cena neexistuje),
+  `ATOMT` a `COLOS` (trh START bez pokrytí) — evidované zvlášť, ať se nezkouší.
+
+Spolu s dřívější opravou, kdy se `live_quotes.currency` konečně používá, tím
+české pozice v Bilanci vycházejí správně: kurz CZK je 1, takže cena z burzy jde
+do ocenění přímo.
+
 ## [Unreleased] - 2026-08-24 (e)
 ### Added — Fio banka PDF parser (both statement generations)
 Fio changed its statement format mid-history, which is why these files never imported.
