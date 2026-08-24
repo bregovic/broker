@@ -7,7 +7,7 @@ classes. Result before: 24 hard fatals, several files parsed as binary garbage.
 Result after: **0 fatals, nothing silently mis-parsed**.
 
 - **Regression fixed (introduced earlier today)**: the `fio_csv` rule added to the seed
-  matched Fio **PDF** statements on `Fio banka|ID transakce` and handed 33 of them to
+  matched Fio **PDF** statements on `Fio banka|ID transakce` and handed all 24 of them to
   `FioCsvParser` → fatal. The rule is removed again: `FioCsvParser` is an unfinished
   stub with a placeholder column mapping, so it should not be registered at all.
 - `FioCsvParser` called `$this->cleanNumber()`, which does not exist (`parseNumber` does)
@@ -30,7 +30,7 @@ Result after: **0 fatals, nothing silently mis-parsed**.
 
 ### Known gaps confirmed by the audit (no parser exists)
 Coinbase (csv/htm/pdf) · eToro (pdf/xlsx) · Revolut consolidated statements (3 files) ·
-Revolut crypto/commodity **CSV** · Fio **PDF** (33 files) · all `.xlsx` · IBKR Transaction
+Revolut crypto/commodity **CSV** · Fio **PDF** (24 files) · all `.xlsx` · IBKR Transaction
 History CSV. `IbkrPdfParser` returns 0 transactions on 2 of the 3 IBKR PDFs.
 
 ## [Unreleased] - 2026-08-24 (b)
