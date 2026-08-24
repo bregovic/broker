@@ -74,20 +74,46 @@ try {
     )");
 
     // 4. Seeding Rules
+    // Discovery tests rules in `priority` order (lowest first) and takes the first match.
+    // Crypto/commodity statements are also valid "account statements", so the trading rule
+    // must stay LAST and must not match on generic words alone ("Výpis z účtu", "Dividend",
+    // "Transactions") — those made every crypto/commodity file parse as a trading file.
+    try {
+        $pdo->exec("ALTER TABLE broker_import_rules ADD COLUMN priority INT DEFAULT 50");
+        echo "FIXED: Column 'priority' added to broker_import_rules.\n";
+    } catch (Exception $e) { /* already exists */ }
+
+    $cs = '(XAU|XAG|XPT|XPD)';
     $rules = [
-        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser', 'revolut.*trading|trading-account-statement|account-statement', 'Account Statement|USD Transactions|Trade.*-.*(Market|Limit)|Dividend|Výpis z účtu|Transakce v USD|Obchod|Dividenda'],
-        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser', 'revolut.*crypto|account-statement.*crypto', 'Výpis z účtu s kryptomĕnami|Crypto.*Statement|Staking rewards?|Odměna za staking|Kryptoměny'],
-        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser', 'revolut.*commodity|account-statement.*commodity', 'Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)|Exchanged to.*(XAU|XAG|XPT|XPD)|Drahé kovy|Komodity'],
-        ['ibkr_pdf', 'Interactive Brokers (PDF)', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser', 'ibkr|trading-account-statement', 'TransactionsCZK|Transactions|Interactive Brokers|Time Period:|Transaction History']
+        // config_name, broker_name, parser_class, file_pattern, content_regex, priority
+        ['revolut_crypto_pdf', 'Revolut Crypto (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCryptoPdfParser',
+            'crypto-account-statement|revolut.*crypto',
+            'Výpis z účtu s krypto|Crypto\\s+Account\\s+Statement|Revolut Digital Assets|Odm[ěĕ]ny? (za|ze) staking|Staking rewards?', 10],
+        ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser',
+            'commodit(y|ies)-account-statement|revolut.*commodit',
+            'Výpis v\\s*' . $cs . '|Sm[ěĕ]něno na\\s*' . $cs . '|Exchanged to\\s*' . $cs, 10],
+        ['ibkr_activity_csv', 'Interactive Brokers (Activity CSV)', 'Broker\\V3\\Import\\Csv\\IbkrCsvParser',
+            '\\.TRANSACTIONS\\..*\\.csv|U\\d{6,}.*\\.csv',
+            'Statement,Header,.*Interactive Brokers|Trades,Header,.*DataDiscriminator', 20],
+        ['ibkr_pdf', 'Interactive Brokers (PDF)', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser',
+            'ibkr',
+            'Interactive Brokers|TransactionsCZK|Time Period:', 30],
+        ['fio_csv', 'Fio banka (CSV)', 'Broker\\V3\\Import\\Csv\\FioCsvParser',
+            'fio.*\\.csv',
+            'Fio banka|ID transakce', 30],
+        ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser',
+            '^(revolut.*)?trading-account-statement|^account-statement',
+            'Transakce v (USD|EUR|CZK)|(USD|EUR|CZK) Transactions|Obchod\\s*[-–]\\s*(Market|Limit|Tržní|Limitní)|Trade\\s*[-–]\\s*(Market|Limit)', 90]
     ];
 
-    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, parser_class, file_pattern, content_regex) 
-                           VALUES (?, ?, ?, ?, ?) 
-                           ON CONFLICT (config_name) DO UPDATE SET 
+    $stmt = $pdo->prepare("INSERT INTO broker_import_rules (config_name, broker_name, parser_class, file_pattern, content_regex, priority)
+                           VALUES (?, ?, ?, ?, ?, ?)
+                           ON CONFLICT (config_name) DO UPDATE SET
                            broker_name = EXCLUDED.broker_name,
                            parser_class = EXCLUDED.parser_class,
                            file_pattern = EXCLUDED.file_pattern,
-                           content_regex = EXCLUDED.content_regex");
+                           content_regex = EXCLUDED.content_regex,
+                           priority = EXCLUDED.priority");
     foreach ($rules as $rule) {
         $stmt->execute($rule);
     }

@@ -45,7 +45,11 @@ abstract class AbstractParser {
             // Only comma: exactly 3 trailing digits => thousands ("1,267"),
             // otherwise treat as a decimal separator ("36,2" / "0,0362").
             $decimals = strlen($val) - $lastComma - 1;
-            $val = ($decimals === 3) ? str_replace(',', '', $val) : str_replace(',', '.', $val);
+            $intPart = ltrim(substr($val, 0, $lastComma), '-');
+            // ...but a thousands group is never preceded by a bare zero: "0,275" is 0.275,
+            // not 275. Crypto quantities hit this constantly.
+            $isThousands = ($decimals === 3) && $intPart !== '' && $intPart !== '0';
+            $val = $isThousands ? str_replace(',', '', $val) : str_replace(',', '.', $val);
         }
         // else: only a dot, or a plain integer -> already parseable
 

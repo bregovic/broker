@@ -4,70 +4,97 @@ namespace Broker\V3\Import\Pdf;
 use Broker\V3\Import\AbstractParser;
 use Broker\V3\Import\TransactionDTO;
 
+/**
+ * Revolut crypto account statement (PDF).
+ *
+ * Layout note: the date is the LAST column of every row, not the first —
+ *   Transakce:        Symbol Typ Množství Cena Hodnota Poplatky Datum
+ *   Odměny ze stakingu: Symbol Typ Množství Datum
+ * so rows are matched whole, anchored on the symbol+type at the start and the
+ * date at the end. Splitting the text into date-led blocks (as this parser used
+ * to do) assigns every row the *previous* row's date.
+ */
 class RevolutCryptoPdfParser extends AbstractParser {
-    
+
+    /** currency token: symbol or ISO code (statements also carry CNY, USD, EUR) */
+    private const CUR  = '(€|\$|[A-Z]{3})';
+    /** a number, possibly with spaces as thousands separators ("1 151 675,69") */
+    private const NUM  = '([0-9][0-9.,\s]*?)';
+    private const DATE = '(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})';
+
     public function getName(): string {
         return "Revolut Crypto PDF";
     }
 
     public function canParse(string $content, string $filename): bool {
-        return preg_match('/Výpis z účtu s kryptomĕnami|Crypto.*Statement|Odměna za staking/ui', $content);
+        return (bool)preg_match('/Výpis z účtu s krypto|Crypto\s+Account\s+Statement|Revolut Digital Assets|Odm[ěĕ]na za staking/ui', $content);
     }
 
     public function parse(string $content): array {
-        $t = $content;
-        $t = str_replace("\xc2\xa0", ' ', $t);
+        $t = str_replace("\xc2\xa0", ' ', $content);
         $t = preg_replace('/[ \t]+/', ' ', $t);
         $t = preg_replace('/\s{2,}/', ' ', $t);
         $t = trim($t);
 
         $out = [];
-        $blockPattern = '/((?:\d{1,2}\.\s*\d{1,2}\.\s*\d{4})|(?:\d{1,2}\s[A-Za-z]{3}\s\d{4}))([\s\S]*?)(?=((?:\d{1,2}\.\s*\d{1,2}\.\s*\d{4})|(?:\d{1,2}\s[A-Za-z]{3}\s\d{4}))|$)/u';
-        
-        if (preg_match_all($blockPattern, $t, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $m) {
-                $rawDate = $m[1];
-                $dateIso = strpos($rawDate, '.') !== false ? $this->csDateToISO($rawDate) : $this->enDateToISO($rawDate);
-                $block = trim($m[2]);
-                if (!$dateIso || !$block) continue;
 
-                // 1. Staking / Rewards
-                if (preg_match('/([A-Z]{2,10})\s+(?:Odměna|Staking|Reward|Interest)\b[^\d]*([0-9][0-9.,]*)/ui', $block, $rw)) {
-                    $symbol = strtoupper($rw[1]);
-                    $qty = $this->parseNumber($rw[2]);
-                    if ($symbol && $qty) {
-                        $out[] = $this->createTransaction($dateIso, $symbol, 'REVENUE', $qty, 0, 'CZK', 'Staking/Reward');
-                        continue;
-                    }
-                }
+        // --- Trades, and card payments made in crypto -------------------------------
+        // "ETH Nákup 1,22735925 4 073,79 CZK 5 000,00 CZK 0,00 CZK 18. 11. 2018"
+        //  symbol type  quantity  unit price   total value   fee        date
+        $tradeRe = '/\b([A-Z]{2,10})\s+(Nákup|Prodej|Buy|Sell|Platba|Payment)\s+'
+                 . self::NUM . '\s+'
+                 . self::NUM . '\s*' . self::CUR . '\s+'   // unit price (derived from total, unused)
+                 . self::NUM . '\s*' . self::CUR . '\s+'   // total value  <- the one we keep
+                 . self::NUM . '\s*' . self::CUR . '\s+'   // fee
+                 . self::DATE . '/u';
 
-                // 2. Trades (Buy/Sell)
-                if (preg_match('/(Buy|Sell|Nákup|Prodej)\s+([A-Z0-9]{2,10}).*?([0-9][0-9.,]*)\s*[A-Z0-9]{2,10}.*?(€|\$|CZK|USD|EUR)\s*([0-9][0-9.,]*)/ui', $block, $trade)) {
-                    $side = strtoupper($trade[1]);
-                    $symbol = strtoupper($trade[2]);
-                    $qty = $this->parseNumber($trade[3]);
-                    $curTok = $trade[4];
-                    $total = $this->parseNumber($trade[5]);
-                    
-                    $currency = $this->symToFiat($curTok);
-                    $type = (strpos($side, 'SELL') !== false || strpos($side, 'PRODEJ') !== false) ? 'SELL' : 'BUY';
-                    
-                    $out[] = $this->createTransaction($dateIso, $symbol, $type, abs($qty), $total, $currency, "Trade $side");
-                    continue;
-                }
+        if (preg_match_all($tradeRe, $t, $trades, PREG_SET_ORDER)) {
+            foreach ($trades as $m) {
+                // A card payment settled in crypto is a disposal, same as a sale.
+                $type = preg_match('/^(Prodej|Sell|Platba|Payment)$/ui', $m[2]) ? 'SELL' : 'BUY';
+                $out[] = $this->createTransaction(
+                    $this->csDateToISO($m[10]),
+                    strtoupper($m[1]),
+                    $type,
+                    $this->parseNumber($m[3]),
+                    $this->parseNumber($m[6]),
+                    $this->symToFiat($m[7]),
+                    $this->parseNumber($m[8]),
+                    'Revolut crypto: ' . $m[2]
+                );
+            }
+        }
+
+        // --- Staking rewards ---------------------------------------------------------
+        // "ADA Odměna za staking 0,263607 2. 12. 2024"
+        $stakeRe = '/\b([A-Z]{2,10})\s+(?:Odm[ěĕ]na za staking|Staking rewards?)\s+([0-9][0-9.,]*)\s+'
+                 . self::DATE . '/u';
+
+        if (preg_match_all($stakeRe, $t, $stakes, PREG_SET_ORDER)) {
+            foreach ($stakes as $m) {
+                $out[] = $this->createTransaction(
+                    $this->csDateToISO($m[3]),
+                    strtoupper($m[1]),
+                    'REVENUE',
+                    $this->parseNumber($m[2]),
+                    0,
+                    'CZK',
+                    0,
+                    'Staking reward'
+                );
             }
         }
 
         return $out;
     }
 
-    private function symToFiat($s): string {
+    private function symToFiat(string $s): string {
         if ($s === '$') return 'USD';
         if ($s === '€') return 'EUR';
         return strtoupper($s) ?: 'CZK';
     }
 
-    private function createTransaction($date, $ticker, $type, $qty, $total, $currency, $notes = ''): TransactionDTO {
+    private function createTransaction($date, $ticker, $type, $qty, $total, $currency, $fee = 0, $notes = ''): TransactionDTO {
         $dto = new TransactionDTO();
         $dto->date = $date;
         $dto->ticker = $ticker;
@@ -75,10 +102,11 @@ class RevolutCryptoPdfParser extends AbstractParser {
         $dto->quantity = (float)$qty;
         $dto->pricePerUnit = (float)($qty ? abs($total / $qty) : 0);
         $dto->currency = $currency;
+        $dto->fee = (float)$fee;
         $dto->totalAmount = (float)$total;
         $dto->source_broker = 'Revolut';
         $dto->metadata = ['notes' => $notes, 'source' => 'RevolutCryptoPdfParser'];
-        $dto->brokerTradeId = "REV_CRYPTO_" . md5($date . $ticker . $type . $qty . $total);
+        $dto->brokerTradeId = "REV_CRY_" . md5($date . $ticker . $type . $qty . $total);
         return $dto;
     }
 }

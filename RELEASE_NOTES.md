@@ -1,5 +1,47 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (b)
+### Fixed — Revolut crypto & commodity imports never ran at all
+Verified by replaying rule discovery against the real statements in `example/`:
+**every** Revolut crypto and commodity file (9/9 tested, PDF and CSV) was claimed by
+the `revolut_trading_pdf` rule and handed to the trading parser.
+- **Root cause**: `ImportManager::discoverRule()` returned the *first* matching row of
+  `broker_import_rules` with no ordering, and the trading rule matched on generic words
+  (`Výpis z účtu`, `Obchod`, `Dividend`) plus a `file_pattern` of `account-statement`,
+  which is a substring of `crypto-account-statement`. The crypto/commodity rules matched
+  too, but were never reached.
+- Rules are now evaluated in `priority` order (lowest first). Priority comes from a new
+  `broker_import_rules.priority` column when present, otherwise it is derived from the
+  config name — so discovery is fixed on deploy, before `init_broker.php` is re-run.
+- Seeded regexes tightened: the trading rule now requires a real trading marker
+  (`Transakce v USD`, `Obchod - Market`, …) and `ibkr_pdf` no longer matches the bare
+  word `Transactions`. Fixed `kryptomĕnami`/`Smĕněno` (ĕ, breve) → `[ěĕ]`; the seeded
+  spelling never matched a real statement.
+- Added the missing `ibkr_activity_csv` and `fio_csv` rules to the seed — `ibkr_activity_csv`
+  existed only as a hand-made row in the production DB, so a fresh environment lost it.
+
+### Fixed — Revolut crypto parser read the wrong column layout
+- In a crypto statement the **date is the last column** of each row
+  (`Symbol Typ Množství Cena Hodnota Poplatky Datum`). The parser split the text into
+  date-*led* blocks, so every transaction was stamped with the **previous** row's date,
+  and its trade regex expected `Nákup BTC` when the statement writes `BTC Nákup`.
+- Rewritten to match whole rows anchored on symbol+type at the start and the date at the
+  end. On the reference statement it now returns **171/171 rows** (27 buys, 8 sells,
+  9 card payments in crypto, 127 staking rewards); it previously returned 127 rewards with
+  shifted dates and 2 accidental trades. Verified against three separate statements.
+- Card payments settled in crypto (`Platba`) are recorded as disposals (`SELL`) — they
+  realize a gain the same way a sale does. Fees are now carried into the DTO.
+
+### Fixed — `parseNumber` turned `0,275` into `275`
+- `AbstractParser::parseNumber` treated "exactly 3 digits after a comma" as a thousands
+  group, so a crypto quantity of `0,275 ETH` parsed as `275 ETH`. A thousands group is
+  never preceded by a bare zero; that case is now a decimal separator.
+
+### Verified, not changed
+- `RevolutCommodityPdfParser` was correct all along — it just never got called. Running it
+  on the real XAU statement yields all 3 transactions with the right quantities, currencies
+  and amounts (closing position matches the statement's own summary exactly).
+
 ## [Unreleased] - 2026-08-24
 ### Fixed — Balance: 4 columns were dead (Avg cost / P&L orig / P&L % orig / FX P&L)
 - `BalancePage.tsx` rendered `avg_cost_orig`, `unrealized_orig`, `unrealized_pct_orig`

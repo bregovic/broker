@@ -149,6 +149,15 @@ class ImportManager {
         $stmt = $this->pdo->query("SELECT * FROM broker_import_rules");
         $allRules = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        // Order matters: a Revolut crypto or commodity statement also satisfies the broader
+        // trading patterns ("Výpis z účtu", "account-statement"), so whichever rule is tested
+        // first wins. Specific configs must be evaluated before generic ones.
+        usort($allRules, function ($a, $b) {
+            $pa = $this->rulePriority($a);
+            $pb = $this->rulePriority($b);
+            return $pa === $pb ? ((int)($a['id'] ?? 0) <=> (int)($b['id'] ?? 0)) : ($pa <=> $pb);
+        });
+
         foreach ($allRules as $rule) {
             $isMatch = false;
 
@@ -172,6 +181,23 @@ class ImportManager {
         }
 
         return null;
+    }
+
+    /**
+     * Lower number = tested first. Uses the `priority` column when the DB has it,
+     * otherwise derives one from the config name so discovery is still correct on
+     * environments where the column has not been added yet.
+     */
+    private function rulePriority(array $rule): int {
+        if (isset($rule['priority']) && $rule['priority'] !== null && $rule['priority'] !== '') {
+            return (int)$rule['priority'];
+        }
+        $name = strtolower(($rule['config_name'] ?? '') . ' ' . ($rule['broker_name'] ?? ''));
+        if (strpos($name, 'crypto') !== false)       return 10;
+        if (strpos($name, 'commodity') !== false)    return 10;
+        if (strpos($name, 'consolidated') !== false) return 20;
+        if (strpos($name, 'trading') !== false)      return 90;   // broadest patterns, test last
+        return 50;
     }
 
     private function loadParserFile(string $className): void {

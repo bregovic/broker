@@ -11,7 +11,9 @@ class RevolutCommodityPdfParser extends AbstractParser {
     }
 
     public function canParse(string $content, string $filename): bool {
-        return preg_match('/Výpis v.*(XAU|XAG|XPT|XPD)|Smĕněno na.*(XAU|XAG|XPT|XPD)/ui', $content);
+        // Note the diacritic: statements use "Směněno" (ě), the seeded rule used to
+        // spell it "Smĕněno" (ĕ), which never matched anything.
+        return (bool)preg_match('/Výpis v\s*(XAU|XAG|XPT|XPD)|Sm[ěĕ]něno na\s*(XAU|XAG|XPT|XPD)|Exchanged to\s*(XAU|XAG|XPT|XPD)/ui', $content);
     }
 
     public function parse(string $content): array {
