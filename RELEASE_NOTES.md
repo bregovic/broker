@@ -1,5 +1,36 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (i)
+### Added — eToro Account Statement (XLSX) parser
+eToro dává výpis v PDF i XLSX. Sešit je strukturovaný, takže se z něj čte
+spolehlivěji; potřebuje rozšíření `zip`, doplněné do Dockerfile jako `php83-zip`.
+
+- Zpracovává se **jen list `Account Activity`**. `Dividends` obsahuje tytéž výplaty
+  znovu (navíc s rozpadem srážkové daně), takže by se při čtení obou započítaly
+  dvakrát. `Holdings` není seznam transakcí, ale **historie snapshotů** — 86 řádků
+  se ukázalo být dvanáct snapshotů po deseti pozicích.
+- **Split musí dopočítat parser.** Řádek `corp action: Split` nese poměr jen v textu
+  (`XLK/USD 2:1`), `Amount` je 0 a počet kusů chybí. Snapshoty ukazují, co se stalo:
+  XLK šel z 0,876795 na 1,75359 kusu a zároveň se půlil otevírací kurz, takže
+  pořizovací cena zůstala. Parser proto sleduje počet kusů podle `Position ID`
+  a rozdíl připíše s nulovou cenou — pozice splitu odpovídá, cena se nehne.
+- Ověřeno proti **finálnímu snapshotu držených pozic od eToro: všech 10 pozic sedí
+  přesně**, včetně splitem upraveného XLK. 122 transakcí, žádná kolize otisků.
+  Potvrzeno i na produkci přes reálný `analyze` endpoint.
+- Pravidlo se hledá podle názvu souboru — XLSX je ZIP a obsah je zkomprimovaný,
+  takže se v něm regexem hledat nedá. Prázdný `content_regex` discovery přeskočí.
+  `parserFitsFile` zná nově i jmenný prostor `Xlsx`, takže sešitový parser dostane
+  jen `.xlsx`/`.xlsm`.
+
+### Fixed — `analyze` vracel u binárních souborů prázdnou odpověď
+Nahrání sešitu skončilo HTTP 200 s **nulovou délkou těla**, takže UI nemělo co
+zobrazit a import vypadal, že se tiše nic nestalo. Odpověď nese `content_preview`
+s prvními 500 bajty souboru; u binárního formátu to není platné UTF-8 a
+`json_encode` v takovém případě vrací `false`, takže `echo` vypsalo prázdno.
+Náhled se teď u binárního obsahu jen popíše a odpovědi z `analyze` používají
+`JSON_INVALID_UTF8_SUBSTITUTE`. Týkalo se to **jakéhokoli binárního formátu**,
+nejen eToro.
+
 ## [Unreleased] - 2026-08-24 (h)
 ### Added — Coinbase (CSV) parser
 Roční exporty z Coinbase dosud neměly parser. Soubor má pár úvodních řádků a teprve
