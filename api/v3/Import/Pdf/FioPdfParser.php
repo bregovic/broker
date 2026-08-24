@@ -92,6 +92,20 @@ class FioPdfParser extends AbstractParser {
                 if ($dto) $out[] = $dto;
             }
         }
+
+        /*
+         * Fio uvádí některé řádky dvakrát (protistrany převodu mezi vlastními
+         * účty). Bez rozlišení mají shodný otisk a druhý by se zahodil jako
+         * duplicita. Pořadí v rámci shodných řádků je stabilní i mezi
+         * překrývajícími se výpisy, takže deduplikace dál funguje; první řádek
+         * si nechává původní otisk, aby už naimportovaná data zůstala platná.
+         */
+        $pocty = [];
+        foreach ($out as $dto) {
+            $zaklad = $dto->brokerTradeId;
+            $pocty[$zaklad] = ($pocty[$zaklad] ?? 0) + 1;
+            if ($pocty[$zaklad] > 1) $dto->brokerTradeId = $zaklad . '_' . $pocty[$zaklad];
+        }
         return $out;
     }
 
@@ -267,8 +281,25 @@ class FioPdfParser extends AbstractParser {
         if (preg_match('/Bezhotovostní výběr|Výběr z účtu/ui', $popis)) {
             return $this->dto('WITHDRAWAL', $datum, null, null, 0.0, $objem, $mena, 0.0, $popis);
         }
-        // Převody mezi vlastními účty nejsou obchod ani pohyb pozice.
-        if (preg_match('/Převod (z|na) účtu/ui', $popis)) return null;
+
+        /*
+         * Převody. Pozici nemění a obchod to není, ale peníze z účtu skutečně
+         * odcházejí a přicházejí — „Převod na účet 123-3696340217/0100“ jsou
+         * dva výběry za 223 500 a 85 700 Kč, které se dřív zahazovaly úplně.
+         * Bez nich nedává zůstatek na účtu smysl.
+         *
+         * Nulové převody jsou protistrana směny měn (ta se řeší jinde), ty
+         * se přeskočí, aby nevznikaly prázdné řádky.
+         */
+        // Pozor na tvar slova: Fio píše „Převod z účtu“, ale „Převod na účet“ —
+        // proto se porovnává jen kmen „úč“, jinak jeden z tvarů propadne.
+        if (preg_match('/Převod\s+(z|na)\s+úč/ui', $popis, $ms)) {
+            if ($objem == 0.0) return null;
+            return $this->dto(
+                strcasecmp($ms[1], 'na') === 0 ? 'WITHDRAWAL' : 'DEPOSIT',
+                $datum, null, null, 0.0, $objem, $mena, 0.0, $popis
+            );
+        }
 
         // Emisní ážio vyplácí emitent místo dividendy (O2) — pro držitele stejný výnos.
         if (preg_match('/\bDividend|emisního ážia/ui', $popis)) {
@@ -281,6 +312,12 @@ class FioPdfParser extends AbstractParser {
 
         if (preg_match('/\b(Nákup|Prodej)\b/u', $popis, $mo)) {
             // Řádek, kde je „papírem“ kód měny, je převod mezi měnami účtu.
+            /*
+             * Řádek, kde je „papírem“ kód měny, je směna mezi měnami účtu.
+             * Pozici nemění a jako vklad/výběr se neeviduje — ve výpisu transakcí
+             * by to lhalo. (Zůstatek hotovosti se proto z toků odvodit nedá,
+             * viz poznámka u třídy.)
+             */
             if (in_array(strtoupper(trim($nazev)), self::MENY, true)) return null;
             if ($mnozstvi == 0.0) return null;
             $castka = $objem ?: ($mnozstvi * (float)$cena);
@@ -335,12 +372,17 @@ class FioPdfParser extends AbstractParser {
         $t->totalAmount = $castka;
         $t->source_broker = 'Fio';
         $t->metadata = $meta;
-        // Popis je součástí otisku: generace 2 v něm nese ID operace, takže dvě
-        // jinak shodné dividendy téhož dne zůstanou rozlišitelné.
-        $t->brokerTradeId = 'FIO_' . md5(implode('|', [
-            $datum, (string)$t->ticker, $typ, $mnozstvi, $castka, $mena, $poplatek,
-            preg_replace('/\s+/u', ' ', trim($popis)),
-        ]));
+        /*
+         * Otisk staví na „ID operace“, které Fio u každé operace uvádí (generace 2).
+         * Celý popis se do otisku dávat nesmí: tentýž obchod se v ročním výpisu
+         * jmenuje „COLTCZ“ a ve čtvrtletním „COLT CZ GROUP SE“, takže by se
+         * z jednoho nákupu staly dva. Generace 1 ID nemá, tam zůstává popis.
+         */
+        $idOperace = preg_match('/(?<!\d)(\d{9,})(?!\d)/', $popis, $mid) ? $mid[1] : null;
+        $t->brokerTradeId = 'FIO_' . md5(implode('|', $idOperace !== null
+            ? [$datum, $typ, $idOperace]
+            : [$datum, (string)$t->ticker, $typ, $mnozstvi, $castka, $mena, $poplatek,
+               preg_replace('/\s+/u', ' ', trim($popis))]));
         return $t;
     }
 }

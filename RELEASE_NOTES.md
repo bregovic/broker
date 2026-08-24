@@ -1,5 +1,38 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-25
+### Fixed — Fio: dvojí započítání obchodů z překrývajících se výpisů
+Kdo naimportoval roční i čtvrtletní výpis za totéž období, dostal některé obchody
+dvakrát. Ověřeno proti tabulce držených pozic, kterou Fio samo uvádí ve výpisu:
+parser hlásil **ČEZ 67 a COLTCZ 90 kusů**, zatímco výpis uvádí **54 a 45**.
+
+Příčinou byl otisk transakce postavený na popisu řádku. Tentýž obchod se ale
+v ročním výpisu jmenuje `COLTCZ` a ve čtvrtletním `COLT CZ GROUP SE`, takže
+otisky nesouhlasily a deduplikace neproběhla. Otisk teď staví na **ID operace**,
+které Fio u každé operace uvádí; popis se používá jen u generace 1, která ID nemá.
+
+Po opravě sedí všechny pozice přesně na výpis: ČEZ 54, CTP 281, COLTCZ 45,
+zbytek (ERBAG, KOMB, MONET, O2, TABAK) je doprodaný na nulu.
+
+> **Data na produkci jsou tím pádem nafouklá** a chtějí přeimportovat.
+
+### Fixed — chyběly skutečné výběry z účtu
+Řádky `Převod na účet 123-…` se zahazovaly jako „interní převod“, jenže jde
+o odchod peněz z účtu — ve vzorku **486 200 Kč**. Regex navíc hlídal jen tvar
+„z účtu“, takže „na účet“ vůbec nesedl. Nově se evidují jako výběr, resp. vklad.
+
+Fio také některé řádky uvádí dvakrát (protistrany převodu). Aby se druhý
+nezahodil jako duplicita, dostává pořadové číslo v rámci shodných řádků; první
+si nechává původní otisk, takže už naimportovaná data zůstávají platná.
+
+### Poznámka — hotovost z toků spočítat nejde
+Pokus zrekonstruovat zůstatek na účtu ze součtu pohybů skončil na **−35 359 Kč**
+proti **3 267,89 Kč**, které uvádí výpis. Postupně se doplnily převody, poplatky
+u obchodů i směny měn a mezera klesla ze 344 tis. na 38 tis., ale nikdy nesedla —
+každá oprava odhalila další případ a u ostatních brokerů by se to opakovalo.
+Zůstatek se proto bude číst přímo z výpisu („Stav peněžních prostředků“), kde ho
+Fio i eToro uvádějí přesně.
+
 ## [Unreleased] - 2026-08-24 (k)
 ### Fixed — zavření endpointů rozbilo stahování cen (regrese)
 Nově naimportované tickery zůstávaly bez ceny, takže Bilance ukazovala míň, než
