@@ -1,5 +1,31 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (d)
+### Added — IBKR Transaction History (CSV) parser
+IBKR's newest export (`U…TRANSACTIONS….csv`) had no parser; the file was matched on
+filename and reported a successful import of zero transactions.
+
+- New `IbkrTransactionHistoryCsvParser`, registered as `ibkr_transaction_history_csv`
+  (priority 15, ahead of the Activity Statement rule; their content patterns are disjoint).
+- **Currency handling.** In this format `Price` is in the trade currency but
+  `Gross Amount`, `Commission` and `Net Amount` are in the account's *base* currency.
+  Established two ways: `Gross / (Quantity × Price)` resolves to one rate per day
+  (24.040 CZK/USD across all trades on 2024-12-02), and the 2024 dividend total comes to
+  2678.9181, exactly the "Total **in CZK**" figure in the Activity Statement for the same
+  period. Trades are therefore stored in the **trade currency** (`Quantity × Price`) so the
+  original-currency columns and the FX split on the Balance page work, with the commission
+  converted into that same currency using the rate implied by the statement. Rows with no
+  trade currency (dividends, tax, deposits, fees) keep the base-currency amount as given.
+- **The fingerprint includes the commission.** IBKR fills one order in parts and the parts
+  can differ *only* in how the commission was split — two INTC buys of 15 shares with the
+  same date, price and gross, but fees of 24.07 and 0.03 CZK. Without it the second fill
+  would be dropped as a duplicate and 30 shares would land as 15.
+- `Forex Trade Component` and `Adjustment` (FX Translations P&L) rows are skipped; they are
+  accounting artifacts and would otherwise create tickers like `EUR.CZK` in the portfolio.
+- Verified on both sample exports: 744 and 548 rows, no fingerprint collisions, and
+  importing both leaves 744 — the overlapping period deduplicates exactly. Net position
+  change: INTC +30, LEG +50, NWL +50, NKE +5, RCL −4, SNDK −0.6667.
+
 ## [Unreleased] - 2026-08-24 (c)
 ### Audit of all 58 sample statements — and the fallout
 Ran every file in the statement archive through real rule discovery + the real parser

@@ -92,9 +92,11 @@ try {
         ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser',
             'commodit(y|ies)-account-statement|revolut.*commodit',
             'Výpis v\\s*' . $cs . '|Sm[ěĕ]něno na\\s*' . $cs . '|Exchanged to\\s*' . $cs, 10],
-        // Activity Statement only. IBKR's "Transaction History" export (U…TRANSACTIONS….csv)
-        // is a different layout that IbkrCsvParser cannot read — it must not be claimed here,
-        // or the import silently reports success with zero transactions.
+        ['ibkr_transaction_history_csv', 'Interactive Brokers (Transaction History CSV)', 'Broker\\V3\\Import\\Csv\\IbkrTransactionHistoryCsvParser',
+            '\\.TRANSACTIONS\\..*\\.csv',
+            'Transaction History,Header,Date|Statement,Data,Title,Transaction History', 15],
+        // Activity Statement only — a different layout that IbkrCsvParser cannot read,
+        // so it must not claim the Transaction History export above.
         ['ibkr_activity_csv', 'Interactive Brokers (Activity CSV)', 'Broker\\V3\\Import\\Csv\\IbkrCsvParser',
             'U\\d{6,}_\\d{4}_\\d{4}\\.csv',
             'Trades,Header,.*DataDiscriminator', 20],
