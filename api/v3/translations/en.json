@@ -137,5 +137,8 @@
     "filter_watched_on": "Watched Only",
     "filter_watched_off": "All Tickers",
     "btn_update_prices": "Update Prices",
-    "locale": "en"
+    "locale": "en",
+    "filter_services": "Services",
+    "filter_services_all": "All services",
+    "filter_services_clear": "Clear service filter"
 }

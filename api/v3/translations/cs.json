@@ -153,5 +153,8 @@
     "filter_watched_on": "Jen sledované",
     "filter_watched_off": "Všechny tituly",
     "btn_update_prices": "Aktualizovat ceny",
-    "locale": "cs"
+    "locale": "cs",
+    "filter_services": "Služby",
+    "filter_services_all": "Všechny služby",
+    "filter_services_clear": "Zrušit filtr služeb"
 }

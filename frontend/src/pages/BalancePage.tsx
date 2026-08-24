@@ -16,6 +16,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { SmartDataGrid } from "../components/SmartDataGrid";
 import { PageLayout, PageContent, PageHeader } from "../components/PageLayout";
+import { ServiceFilter, useServiceFilter } from "../components/ServiceFilter";
 import { useTranslation } from "../context/TranslationContext";
 
 const useStyles = makeStyles({
@@ -250,6 +251,11 @@ export const BalancePage = () => {
 
     const getRowId = useCallback((item: PortfolioItem) => item.ticker, []);
 
+    // Filtruje se před předáním do tabulky, takže souhrnné karty (počítané
+    // z onFilteredDataChange) se přepočítají samy.
+    const getPlatform = useCallback((item: PortfolioItem) => item.platform, []);
+    const sluzby = useServiceFilter(items, getPlatform);
+
     if (loading) return <Spinner label={t('loading_balances')} />;
     if (error) return <PageLayout><PageContent><Text>{error}</Text></PageContent></PageLayout>;
 
@@ -270,6 +276,11 @@ export const BalancePage = () => {
                             <Option value="ticker">Jen Ticker (agregovaně)</Option>
                         </Dropdown>
                     </div>
+                    <ServiceFilter
+                        dostupne={sluzby.dostupne}
+                        selected={sluzby.selected}
+                        onChange={sluzby.setSelected}
+                    />
                 </Toolbar>
             </PageHeader>
             <PageContent>
@@ -307,7 +318,7 @@ export const BalancePage = () => {
                 <div className={styles.tableContainer} style={{ maxHeight: 'calc(100vh - 350px)' }}>
                     <div style={{ minWidth: '800px', height: '100%' }}>
                         <SmartDataGrid
-                            items={items}
+                            items={sluzby.filtered}
                             columns={columns}
                             getRowId={getRowId}
                             withFilterRow

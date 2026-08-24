@@ -12,6 +12,7 @@ import {
 import { ArrowSync24Regular } from "@fluentui/react-icons";
 import axios from 'axios';
 import { SmartDataGrid } from '../components/SmartDataGrid';
+import { ServiceFilter, useServiceFilter } from "../components/ServiceFilter";
 import { PageLayout, PageContent, PageHeader } from '../components/PageLayout';
 import { useTranslation } from '../context/TranslationContext';
 
@@ -230,6 +231,10 @@ export const DividendsPage = () => {
     ], [t, styles.positive, styles.negative]);
 
     const getRowId = useCallback((item: DividendItem) => item.id, []);
+    // Filtruje se před předáním do tabulky, aby souhrnné hodnoty seděly.
+    const getPlatform = useCallback((item: DividendItem) => item.platform, []);
+    const sluzby = useServiceFilter(items, getPlatform);
+
 
     if (loading) return <Spinner label={t('loading_dividends')} />;
     if (error) return <PageLayout><PageContent><Text>{error}</Text></PageContent></PageLayout>;
@@ -241,6 +246,11 @@ export const DividendsPage = () => {
                     <ToolbarButton appearance="subtle" icon={<ArrowSync24Regular />} onClick={loadData}>
                         {t('refresh') || 'Obnovit'}
                     </ToolbarButton>
+                    <ServiceFilter
+                        dostupne={sluzby.dostupne}
+                        selected={sluzby.selected}
+                        onChange={sluzby.setSelected}
+                    />
                 </Toolbar>
             </PageHeader>
             <PageContent noScroll>
@@ -279,7 +289,7 @@ export const DividendsPage = () => {
                     ) : (
                         <div style={{ minWidth: '800px', height: '100%' }}>
                             <SmartDataGrid
-                                items={items}
+                                items={sluzby.filtered}
                                 columns={personalColumns}
                                 getRowId={getRowId}
                                 withFilterRow

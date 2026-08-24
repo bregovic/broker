@@ -20,6 +20,7 @@ import { ArrowSync24Regular, Delete24Regular, MoneySettings24Regular } from "@fl
 import { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { SmartDataGrid } from "../components/SmartDataGrid";
+import { ServiceFilter, useServiceFilter } from "../components/ServiceFilter";
 import { PageLayout, PageContent, PageHeader } from "../components/PageLayout";
 import { useTranslation } from "../context/TranslationContext";
 
@@ -226,6 +227,10 @@ export const PortfolioPage = () => {
     ], [t, styles.buy, styles.sell, styles.neutral]);
 
     const getRowId = useCallback((item: TransactionItem) => item.trans_id, []);
+    // Filtruje se před předáním do tabulky, aby souhrnné hodnoty seděly.
+    const getPlatform = useCallback((item: TransactionItem) => item.platform, []);
+    const sluzby = useServiceFilter(items, getPlatform);
+
 
     if (loading) return <Spinner label={t('loading_transactions')} />;
     if (error) return <Text>{error}</Text>;
@@ -257,13 +262,18 @@ export const PortfolioPage = () => {
                             ? `Smazat vybrané (${selectedItems.size})`
                             : `Smazat zobrazené (${filteredItems.length})`}
                     </ToolbarButton>
+                    <ServiceFilter
+                        dostupne={sluzby.dostupne}
+                        selected={sluzby.selected}
+                        onChange={sluzby.setSelected}
+                    />
                 </Toolbar>
             </PageHeader>
             <PageContent noScroll>
                 <div className={styles.tableContainer} style={{ flex: 1, minHeight: 0 }}>
                     <div style={{ minWidth: '800px', height: '100%' }}>
                         <SmartDataGrid
-                            items={items}
+                            items={sluzby.filtered}
                             columns={columns}
                             getRowId={getRowId}
                             onFilteredDataChange={setFilteredItems}

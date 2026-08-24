@@ -1,5 +1,24 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (j)
+### Added — filtr služeb (brokerů) na přehledových stránkách
+Přehledy míchají všechny brokery dohromady, takže se z nich nedalo vyčíst, jak si
+stojí jednotlivá služba. Nový `ServiceFilter` je v hlavičce stránky a nabízí
+vícenásobný výběr brokerů s počtem řádků u každého.
+
+- Zapojeno v **Bilanci, Portfoliu, Dividendách a P&L**.
+- Volba se drží v `localStorage` a **platí napříč stránkami** — kdo si zobrazí jen
+  Fio, chce ho vidět i v dividendách. Ovládací prvek je proto vždy na stránce
+  vidět a při aktivním filtru zvýrazněný; skrytý filtr, který tiše mění čísla,
+  je horší než žádný. Vedle je křížek na zrušení.
+- Filtruje se **před** předáním do `SmartDataGrid`, takže souhrnné karty
+  (počítané z `onFilteredDataChange`) se přepočítají samy — Bilance tedy ukáže
+  hodnotu a P&L jen za vybrané služby.
+- Prázdný výběr znamená „vše“, ne „nic“, aby stránka nikdy nevyšla prázdná.
+  Uložená služba, která v aktuálních datech není (jiný účet, smazaný import), se
+  ignoruje. Při jediné dostupné službě se filtr nezobrazuje vůbec.
+- Popisky doplněny do `api/v3/translations/{cs,en}.json`.
+
 ## [Unreleased] - 2026-08-24 (i)
 ### Added — eToro Account Statement (XLSX) parser
 eToro dává výpis v PDF i XLSX. Sešit je strukturovaný, takže se z něj čte

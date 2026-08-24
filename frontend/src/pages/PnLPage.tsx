@@ -13,6 +13,7 @@ import {
 import { ArrowSync24Regular } from "@fluentui/react-icons";
 import axios from 'axios';
 import { SmartDataGrid } from '../components/SmartDataGrid';
+import { ServiceFilter, useServiceFilter } from "../components/ServiceFilter";
 import { PageLayout, PageContent, PageHeader } from '../components/PageLayout';
 import { useTranslation } from '../context/TranslationContext';
 
@@ -182,6 +183,10 @@ export const PnLPage = () => {
     ], [t, styles.positive, styles.negative]);
 
     const getRowId = useCallback((item: PnLItem) => item.id, []);
+    // Filtruje se před předáním do tabulky, aby souhrnné hodnoty seděly.
+    const getPlatform = useCallback((item: PnLItem) => item.platform, []);
+    const sluzby = useServiceFilter(items, getPlatform);
+
 
     if (loading) return <Spinner label={t('loading_pnl')} />;
     if (error) return <PageLayout><PageContent><Text>{error}</Text></PageContent></PageLayout>;
@@ -193,6 +198,11 @@ export const PnLPage = () => {
                     <ToolbarButton appearance="subtle" icon={<ArrowSync24Regular />} onClick={loadData}>
                         {t('refresh') || 'Obnovit'}
                     </ToolbarButton>
+                    <ServiceFilter
+                        dostupne={sluzby.dostupne}
+                        selected={sluzby.selected}
+                        onChange={sluzby.setSelected}
+                    />
                 </Toolbar>
             </PageHeader>
             <PageContent noScroll>
@@ -245,7 +255,7 @@ export const PnLPage = () => {
                     ) : (
                         <div style={{ minWidth: '800px', height: '100%' }}>
                             <SmartDataGrid
-                                items={items}
+                                items={sluzby.filtered}
                                 columns={columns}
                                 getRowId={getRowId}
                                 onFilteredDataChange={handleFilteredDataChange}
