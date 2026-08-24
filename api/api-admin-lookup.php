@@ -3,6 +3,10 @@
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/config.php';
 session_start();
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_login();
+
 
 try {
     $pdo = get_pdo();

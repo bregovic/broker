@@ -3,6 +3,10 @@
  * AJAX endpoint pro uložení manuální ceny do broker_live_quotes / live_quotes
  */
 session_start();
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_login();
+
 
 // Authentication check
 $isLoggedIn = isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true;

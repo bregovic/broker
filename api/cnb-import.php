@@ -1,6 +1,10 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 session_start();
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_admin();
+
 $isLoggedIn = isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true;
 $isAnonymous = isset($_SESSION['anonymous']) && $_SESSION['anonymous'] === true;
 if (!$isLoggedIn && !$isAnonymous) { http_response_code(401); echo json_encode(['ok'=>false,'message'=>'Nejste přihlášen.']); exit; }

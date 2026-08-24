@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_login();
+
 // calculate_metrics.php - Calculates 52w High/Low and EMA 212 for all tickers
 // AND updates schema if needed.
 

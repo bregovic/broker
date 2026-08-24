@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_login();
+
 // ajax-update-prices.php
 header('Content-Type: application/json');
 set_time_limit(600); // 10 minutes

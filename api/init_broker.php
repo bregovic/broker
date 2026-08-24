@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_admin();
+
 /**
  * DB INITIALIZER (Nuclear Version - Drops non-core tables for clean state)
  */

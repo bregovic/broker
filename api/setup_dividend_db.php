@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_admin();
+
 /**
  * setup_dividend_db.php
  * Standalone & inline migration script to create dividend tables and columns.

@@ -54,7 +54,9 @@ try {
     $action = $_GET['action'] ?? 'process'; 
 
     $userId = resolveUserId();
-    if ($action !== 'list_rules' && !$userId) {
+    // `list_rules` bývalo z kontroly vyjmuté, takže kdokoli zvenku viděl seznam
+    // importních pravidel včetně tříd parserů. Přihlášení teď platí pro všechny akce.
+    if (!$userId) {
         http_response_code(401);
         echo json_encode(['success' => false, 'message' => 'Uživatel není přihlášen. Přihlaste se prosím znovu.']);
         exit;

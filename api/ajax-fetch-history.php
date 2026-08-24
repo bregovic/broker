@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_login();
+
 // ajax-fetch-history.php
 // v2.1 - Unified Price Updater (Yahoo Primary + Google Fallback)
 // Respektuje: period (1d, 1y, max) nebo auto-smart.

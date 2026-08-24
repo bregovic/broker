@@ -1,4 +1,8 @@
 <?php
+// Zavřeno: endpoint byl dostupný bez přihlášení. Viz api/auth_guard.php.
+require_once __DIR__ . '/auth_guard.php';
+require_admin();
+
 header('Content-Type: text/plain; charset=utf-8');
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/googlefinanceservice.php';
