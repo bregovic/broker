@@ -64,7 +64,7 @@ try {
 
     // 0. LIST RULES (For dropdowns)
     if ($action === 'list_rules') {
-        echo json_encode(['success' => true, 'rules' => $manager->getAvailableRules()]);
+        echo json_encode(['success' => true, 'rules' => $manager->getAvailableRules()], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
 
@@ -109,7 +109,7 @@ try {
                     'temp_file' => $tempFileParam,
                     'success' => true
                 ], $details)]
-            ]);
+            ], JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
         }
 
@@ -180,7 +180,7 @@ try {
             $results[] = $analysis;
         }
 
-        echo json_encode(['success' => true, 'data' => $results]);
+        echo json_encode(['success' => true, 'data' => $results], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
 
@@ -452,7 +452,7 @@ try {
                 }
             }
             
-            echo json_encode(['success' => true, 'summary' => $summary]);
+            echo json_encode(['success' => true, 'summary' => $summary], JSON_INVALID_UTF8_SUBSTITUTE);
 
         } catch (Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();

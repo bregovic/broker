@@ -61,7 +61,10 @@ class ImportManager {
             'tx_count' => count($transactions),
             'rule_id' => $rule ? $rule['id'] : null,
             'asset_type' => $this->guessAssetTypeFromRule($rule),
-            'content_preview' => mb_substr($content, 0, 500)
+            // U binárních formátů (XLSX) je náhled nesmysl a hlavně škodí:
+            // json_encode na neplatném UTF-8 vrátí false a endpoint odpoví prázdnem
+            // s HTTP 200, takže se import tváří, že se nic nestalo.
+            'content_preview' => $this->nahled($content)
         ];
     }
 
@@ -113,6 +116,14 @@ class ImportManager {
     public function getAvailableRules(): array {
         $stmt = $this->pdo->query("SELECT id, config_name AS rule_name, broker_name FROM broker_import_rules ORDER BY broker_name");
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /** Náhled obsahu bezpečný pro JSON — binární soubory se jen popíšou. */
+    private function nahled(string $content): string {
+        $kus = substr($content, 0, 500);
+        return mb_check_encoding($kus, 'UTF-8')
+            ? $kus
+            : '(binární soubor, ' . strlen($content) . ' B)';
     }
 
     private function guessAssetTypeFromRule(?array $rule): string {
