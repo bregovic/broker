@@ -1,5 +1,31 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (g)
+### Fixed — import padal na NOT NULL u `ticker`, Fio generace 1 nenašla nic
+Dvě chyby nahlášené z produkce po prvním ostrém importu.
+
+- **`SQLSTATE[23502] null value in column "ticker"`.** Hotovostní pohyby se neváží
+  k žádnému papíru, takže parsery u nich ticker nevyplňovaly — jenže sloupec je
+  NOT NULL a shodil se celý import. `v3/api-import.php` teď zástupný kód doplní
+  centrálně (`CASH_CZK`, `FEE_CZK`, `TAX_USD`) a hlavně srovná `product_type` na
+  Cash/Fee/Tax, které `api-portfolio.php` přeskakuje — z vkladu se tedy nestane
+  fiktivní pozice. Papírová transakce, která by ticker mít měla a nemá, se
+  přeskočí a započítá do `skipped` místo aby shodila dávku.
+  Ověřeno na **3125 transakcích** ze všech parserů a vzorků: bez tickeru přijdou
+  jen vklady (37) a poplatky (25), neošetřený případ nula.
+- **Fio generace 1 vracela nulu.** Parser byl vyvinutý proti textu z `pdfjs`, ale
+  ImportManager tahá obsah přes `pdftotext -layout`, který zachovává vizuální
+  pořadí sloupců — u generace 1 tedy úplně jiné. Přepsáno řádkově proti skutečnému
+  výstupu pdftotext (sloupce oddělené 2+ mezerami, generace 2 = blok několika řádků
+  na transakci, zalomené popisy jako pokračovací řádky).
+- Cestou vyšla najevo ještě jedna chyba: test „vypadá to jako sloupec Směr“
+  porovnával prefix, takže zahazoval názvy **KOMERČNÍ BANKA** (začíná na `K`) a
+  **PHILIP MORRIS** (na `P`) — tedy zrovna kódy směru. Sedm nákupů kvůli tomu
+  přišlo o ticker a pozice KOMB a TABAK vycházely záporné.
+
+Revolut a IBKR parsery dávají pod pdftotext **identická čísla** jako předtím,
+takže je tahle změna nijak nezasáhla.
+
 ## [Unreleased] - 2026-08-24 (f)
 ### Fixed — české papíry se nikdy neocenily (chybějící symboly pražské burzy)
 Bez aktuální ceny zůstávalo Fio portfolio v Bilanci na nule. Yahoo chce pro BCPP
@@ -44,14 +70,19 @@ a novějším s ní) s identickou hlavičkou. Jeden parser tedy stačí na obě.
   práv volitelné dividendy (CTP) — ta se připíšou a zase odepíšou a vytvořila by fiktivní
   pozice. `Výplata emisního ážia` se naopak bere jako peněžní výnos (O2 ji platí místo
   dividendy).
-- Výsledek na 24 vzorcích: **186 řádků → 121 transakcí**, 65 vynechaných řádků prošlo
-  ruční kontrolou a všechna jsou čísla stránek, hranice sekcí, převody nebo práva.
-  Žádná kolize otisků uvnitř souboru; napříč soubory se překryv čtvrtletních a ročních
-  výpisů korektně odbourá (121 → 112).
+- Výsledek na 24 vzorcích: **186 bloků → 124 transakcí**, 62 vynechaných bloků prošlo
+  ruční kontrolou (převody měn 24, převody mezi vlastními účty 14, práva volitelné
+  dividendy 21, tři nulové náhrady za suspendaci). Žádná kolize otisků uvnitř souboru;
+  napříč soubory se překryv čtvrtletních a ročních výpisů odbourá (124 → 117).
+- Kontrola správnosti: pozice KOMB, MONET, O2, TABAK i ERBAG vycházejí po všech
+  výpisech přesně na **nulu** (plně doprodané), zbývají CEZ 54, CTP 272, CZG 90.
+  Na nulu to vyjde jen tehdy, když sedí každý nákup i prodej.
 
-> Otevřená otázka k datům, ne k parseru: čistá pozice KOMB vychází −91 ks. Výpisy
-> obsahují nákupy 39 ks, ale portfolio v 2021-02 už uvádí 130 ks — část historie
-> v archivu chybí, nebo byly papíry převedeny odjinud.
+> **Oprava dřívějšího zápisu (verze e).** První verze parseru byla postavená na textu
+> z `pdfjs`, jenže produkce používá `pdftotext -layout` a ten dává jiné pořadí sloupců.
+> Generace 1 pod ním vracela **nulu** a čísla 121/186 i tvrzení „v archivu chybí část
+> historie KOMB“ z toho zápisu neplatila — chyběly řádky, které pdfjs zahodil, nikoli
+> výpisy. Parser je přepsaný řádkově proti skutečnému výstupu pdftotext.
 
 ## [Unreleased] - 2026-08-24 (d)
 ### Added — IBKR Transaction History (CSV) parser

@@ -7,32 +7,34 @@ use Broker\V3\Import\TransactionDTO;
 /**
  * Fio banka — výpis z obchodního účtu (PDF).
  *
- * Fio formát výpisu za běhu dvakrát změnilo. Rozlišují se spolehlivě podle
- * názvu sloupce v souhrnu, ten se měnil spolu se strukturou:
+ * Vstupem je výstup `pdftotext -layout` (tak si obsah tahá ImportManager), který
+ * zachovává sloupce a **odděluje je dvěma a více mezerami**. Na tom celý parser
+ * stojí; kdyby se text extrahoval jinak (bez -layout), pořadí sloupců se rozpadne.
  *
- *   GENERACE 1  „Výnosy z CP“  (cenné papíry)   — vzorky 2020-01 až 2021-01
- *       Řádek: DATUM ČAS | Objem | Poplatky | Cena | Množství | Směr Trh Název
- *       Datum ve tvaru `05.01.'21 10:14`, sloupce jdou v PDF v obráceném pořadí
- *       a chybí ISIN.
+ * Fio formát dvakrát změnilo. Generace se pozná podle názvu sloupce v souhrnu,
+ * který se měnil spolu se strukturou:
  *
- *   GENERACE 2  „Výnosy z IN“  (investiční nástroje) — 2021-02 až dosud
- *       Řádek: DATUM ČAS | Název | ISIN | Množství | Objem | Trh | Operace |
- *              Jednotková cena | ID operace | Upřesnění | Poplatky | Podíl PNO
- *       Datum ve tvaru `2.1.2025 10:26`, přibyl ISIN a ID operace.
+ *   GENERACE 1 — „Výnosy z CP“ (2020 až začátek 2021). Jedna transakce = jeden
+ *   řádek, na konci vždy čtyři čísla:
+ *     Datum a čas | Název | Směr | Trh | Poznámka | Množství | Cena | Poplatky | Objem
+ *     13.08.'20 14:51   ČEZ, A.S.   K   BCPP   Nákup   15,00   476,00   50,00   -7 140,00
  *
- * Pozdější výpisy generace 2 mají na titulní straně navíc „Spisová značka“,
- * ale **tabulka operací je totožná**, takže je čte tentýž kód. (Ověřeno:
- * 2024-01 existuje ve dvou staženích — starším bez spisové značky a novějším
- * s ní — a obě mají identickou hlavičku tabulky.)
+ *   GENERACE 2 — „Výnosy z IN“ (od jara 2021). Jedna transakce = **blok několika
+ *   řádků**; každý řádek nese jednu hodnotu zarovnanou vpravo:
+ *     2.1.2025 10:26   ČEZ, A.S.   CZ0005112300   21,00   -20 181,00
+ *     BCPP             Nákup                         961,00      <- jednotková cena
+ *     47561440457                                     80,63      <- poplatky
+ *                                                      0,39 %    <- podíl PNO
  *
- * Měna se bere z nadpisu sekce `Výpis operací v <MĚNA>`; jeden výpis jich má
- * víc (CZK i EUR). Řádky, kde je „název papíru“ ve skutečnosti kód měny, jsou
- * převody mezi měnami — přeskakují se, aby v portfoliu nevznikly tickery
- * jako `EUR`.
+ * Pozdější výpisy generace 2 mají na titulní straně navíc „Spisová značka“, ale
+ * tabulka operací je totožná (ověřeno na 2024-01, které existuje ve dvou
+ * staženích — před tou změnou a po ní).
+ *
+ * Měna se bere z nadpisu `Výpis operací v <MĚNA>`; výpis má běžně sekci CZK i EUR.
  */
 class FioPdfParser extends AbstractParser {
 
-    /** ISIN → ticker; převzato z api/js/data/TickerMap.js (mrtvá JS větev). */
+    /** ISIN → ticker; převzato z api/js/data/TickerMap.js. */
     private const ISIN_TICKER = [
         'CZ0009008942' => 'CZG',   'CZ0005112300' => 'CEZ',   'CZ1008000310' => 'DSPW',
         'AT0000652011' => 'ERBAG', 'SK1000025322' => 'GEV',   'CZ0009000121' => 'KOFOL',
@@ -48,23 +50,26 @@ class FioPdfParser extends AbstractParser {
         'CZ0009093209' => 'O2',
     ];
 
-    /** Název → ticker. Fio píše názvy různě, proto se hledá na začátku názvu. */
+    /** Název → ticker. Porovnává se na začátek názvu, Fio je píše nejednotně. */
     private const NAZEV_TICKER = [
-        'COLT CZ GROUP' => 'CZG',   'ČEZ' => 'CEZ',            'DOOSAN ŠKODA POWER' => 'DSPW',
-        'ERSTE GROUP BANK' => 'ERBAG', 'GEVORKYAN' => 'GEV',   'KOFOLA' => 'KOFOL',
+        'COLT CZ GROUP' => 'CZG', 'ČEZ' => 'CEZ', 'DOOSAN ŠKODA POWER' => 'DSPW',
+        'ERSTE GROUP BANK' => 'ERBAG', 'GEVORKYAN' => 'GEV', 'KOFOLA' => 'KOFOL',
         'KOMERČNÍ BANKA' => 'KOMB', 'MONETA MONEY BANK' => 'MONET', 'PRIMOCO UAV' => 'PRIUA',
         'TATRY MOUNTAIN RESORTS' => 'TMR', 'VIENNA INSURANCE GROUP' => 'VIG', 'VIG' => 'VIG',
-        'E4U' => 'EFORU',           'ENERGOAQUA' => 'ENRGA',   'FOOTSHOP' => 'FTSHP',
-        'PHILIP MORRIS' => 'TABAK', 'PHOTON ENERGY' => 'PEN',  'RMS MEZZANINE' => 'PVT',
-        'SAB FINANCE' => 'SABFG',   'TOMA' => 'TOMA',          'ATOMTRACE' => 'ATOMT',
-        'BEZVAVLASY' => 'BEZVA',    'COLOSEUM HOLDING' => 'COLOS', 'EMAN' => 'EMAN',
-        'FILLAMENTUM' => 'FILL',    'FIXED.ZONE' => 'FIXED',   'HARDWARIO' => 'HWIO',
-        'KARO LEATHER' => 'KARIN',  'M&T 1997' => 'KLIKY',     'M2C HOLDING' => 'M2C',
-        'MMCITÉ' => 'MMCTE',        'PILULKA' => 'PINK',       'PRABOS' => 'PRAB',
-        'CTP' => 'CTP',             'O2' => 'O2',
+        'E4U' => 'EFORU', 'ENERGOAQUA' => 'ENRGA', 'FOOTSHOP' => 'FTSHP',
+        'PHILIP MORRIS' => 'TABAK', 'PHOTON ENERGY' => 'PEN', 'RMS MEZZANINE' => 'PVT',
+        'SAB FINANCE' => 'SABFG', 'TOMA' => 'TOMA', 'ATOMTRACE' => 'ATOMT',
+        'BEZVAVLASY' => 'BEZVA', 'COLOSEUM HOLDING' => 'COLOS', 'EMAN' => 'EMAN',
+        'FILLAMENTUM' => 'FILL', 'FIXED.ZONE' => 'FIXED', 'HARDWARIO' => 'HWIO',
+        'KARO LEATHER' => 'KARIN', 'M&T 1997' => 'KLIKY', 'M2C HOLDING' => 'M2C',
+        'MMCITÉ' => 'MMCTE', 'PILULKA' => 'PINK', 'PRABOS' => 'PRAB',
+        'CTP' => 'CTP', 'O2' => 'O2',
     ];
 
     private const MENY = ['CZK', 'EUR', 'USD', 'PLN', 'HUF', 'GBP'];
+
+    /** Účetní kroky volitelné dividendy — práva se připíšou a zase odepíšou. */
+    private const KORPORATNI = '/Distribuce práv|Odebrání práv|Ukončení CP/ui';
 
     public function getName(): string {
         return 'Fio banka (PDF)';
@@ -72,21 +77,18 @@ class FioPdfParser extends AbstractParser {
 
     public function canParse(string $content, string $filename): bool {
         return str_contains($content, 'Fio banka')
-            && (str_contains($content, 'Výpis operací v') || str_contains($content, 'Výpis z účtu'));
+            && (str_contains($content, 'Výpis operací v') || str_contains($content, 'Výnosy z'));
     }
 
     public function parse(string $content): array {
-        $t = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $content); // NBSP a úzká mezera
-        $t = preg_replace('/[ \t]+/', ' ', $t);
-        $t = preg_replace('/\s{2,}/', ' ', $t);
-
-        // Generace se pozná podle názvu sloupce v souhrnu.
-        $generace1 = str_contains($t, 'Výnosy z CP') && !str_contains($t, 'Výnosy z IN');
+        $text = str_replace(["\xc2\xa0", "\xe2\x80\xaf", "\r", "\f"], [' ', ' ', '', "\n"], $content);
+        $g1 = str_contains($text, 'Výnosy z CP') && !str_contains($text, 'Výnosy z IN');
 
         $out = [];
-        foreach ($this->sekce($t, $generace1) as [$mena, $telo]) {
-            foreach ($this->radky($telo, $generace1) as $radek) {
-                $dto = $generace1 ? $this->radekG1($radek, $mena) : $this->radekG2($radek, $mena);
+        foreach ($this->sekce($text) as [$mena, $telo]) {
+            $bloky = $this->bloky($telo, $g1);
+            foreach ($bloky as $blok) {
+                $dto = $g1 ? $this->blokG1($blok, $mena) : $this->blokG2($blok, $mena);
                 if ($dto) $out[] = $dto;
             }
         }
@@ -94,230 +96,238 @@ class FioPdfParser extends AbstractParser {
     }
 
     /**
-     * Sekce operací, jedna na měnu; výpis jich má běžně víc (CZK i EUR).
-     *
-     * V generaci 2 stojí měna hned za nadpisem („Výpis operací v CZK“).
-     * V generaci 1 jsou sloupce v PDF obráceně, takže za nadpisem následují
-     * nejdřív součty a měna až za nimi — musí se dohledat jako první kód měny
-     * v sekci, ne jako pevná pozice.
+     * Sekce operací, jedna na měnu. Nadpis „Výpis operací v CZK“ může být
+     * v generaci 1 zalomený, proto se měna hledá i na následujícím řádku.
      *
      * @return array<array{0:string,1:string}>
      */
-    private function sekce(string $t, bool $g1): array {
+    private function sekce(string $text): array {
         $meny = implode('|', self::MENY);
-        if (!$g1) {
-            $casti = preg_split('/Výpis operací v (' . $meny . ')\b/u', $t, -1, PREG_SPLIT_DELIM_CAPTURE);
-            $out = [];
-            for ($i = 1; $i < count($casti); $i += 2) $out[] = [$casti[$i], $casti[$i + 1] ?? ''];
-            return $out;
-        }
-        $casti = preg_split('/Výpis operací v/u', $t);
+        $casti = preg_split('/Výpis operací v\s*/u', $text);
         $out = [];
         foreach (array_slice($casti, 1) as $telo) {
-            $mena = preg_match('/\b(' . $meny . ')\b/u', $telo, $m) ? $m[1] : 'CZK';
+            $mena = preg_match('/^\s*(' . $meny . ')\b/u', $telo, $m) ? $m[1]
+                  : (preg_match('/\b(' . $meny . ')\b/u', $telo, $m2) ? $m2[1] : 'CZK');
             $out[] = [$mena, $telo];
         }
         return $out;
     }
 
     /**
-     * Rozseká tělo sekce na řádky podle data. Lookbehind na číslici je nutný:
-     * bez něj se `16.12.2024` rozpadne na "1" a "6.12.2024" a transakce dostane
-     * datum o deset dní jinde.
+     * Rozseká sekci na bloky. Blok začíná řádkem, který má vlevo datum, a končí
+     * před dalším takovým řádkem — v generaci 2 patří k jedné transakci několik
+     * řádků, v generaci 1 se ještě zalamují dlouhé popisy.
+     *
+     * @return array<string[]>  bloky jako pole řádků
      */
-    private function radky(string $telo, bool $g1): array {
-        $vzor = $g1
-            ? '/(?<!\d)(?=\d{2}\.\d{2}\.\'\d{2} \d{1,2}:\d{2})/u'
-            : '/(?<!\d)(?=\d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2})/u';
-        $kusy = preg_split($vzor, $telo);
-        $out = [];
-        foreach ($kusy as $k) {
-            $k = trim($k);
-            if ($k === '' || !preg_match('/^\d{1,2}\./', $k)) continue;
-            // Uřízne patičku banky, kdyby se přilepila na poslední řádek.
-            $k = preg_split('/Fio banka, a\.s\./u', $k)[0];
-            $out[] = trim($k);
+    private function bloky(string $telo, bool $g1): array {
+        $vzorDatum = $g1
+            ? '/^\s*\d{2}\.\d{2}\.\'\d{2}\s+\d{1,2}:\d{2}\b/u'
+            : '/^\s*\d{1,2}\.\d{1,2}\.\d{4}\s+\d{1,2}:\d{2}\b/u';
+
+        $bloky = [];
+        $akt = null;
+        foreach (explode("\n", $telo) as $radek) {
+            if (trim($radek) === '') continue;
+            // Patička a hlavičky stránek do transakcí nepatří.
+            if (preg_match('/Fio banka, a\.s\.|^\s*Číslo (účtu|výpisu|o\.ú\.)|Strana\s|^\s*\d+\s*[\/z]\s*\d+\s*$/u', $radek)) continue;
+            if (preg_match('/^\s*Datum a čas\b|Podíl PNO\s*$|^\s*(Trh|ID operace)\s*$/u', $radek)) continue;
+
+            if (preg_match($vzorDatum, $radek)) {
+                if ($akt !== null) $bloky[] = $akt;
+                $akt = [$radek];
+            } elseif ($akt !== null) {
+                $akt[] = $radek;
+            }
         }
-        return $out;
+        if ($akt !== null) $bloky[] = $akt;
+        return $bloky;
+    }
+
+    /** Sloupce jsou v -layout odděleny dvěma a více mezerami. */
+    private function sloupce(string $radek): array {
+        return array_values(array_filter(preg_split('/\s{2,}/u', trim($radek)), fn($x) => $x !== ''));
     }
 
     /** Fio píše čísla česky: mezera = tisíce, čárka = desetinná tečka. */
     private function cislo(?string $s): ?float {
         if ($s === null) return null;
-        $s = str_replace([' ', "\xc2\xa0"], '', trim($s));
+        $s = str_replace([' ', '%'], '', trim($s));
         $s = str_replace(',', '.', $s);
         return is_numeric($s) ? (float)$s : null;
     }
 
-    /**
-     * České číslo. Lookbehind na číslici i písmeno je zásadní: bez něj se
-     * koncovka ISINu slepí s následujícím množstvím přes pravidlo o mezerách
-     * jako oddělovači tisíců — z `CZ0009093209 350,00` vznikne 209 350 místo 350.
-     */
-    private const CISLO = '(?<![\d\p{L}])(-?\d{1,3}(?: \d{3})*,\d+|-?\d+,\d+)';
-
-    /** Všechna česká čísla v textu, v pořadí výskytu. */
-    private function cisla(string $s): array {
-        preg_match_all('/' . self::CISLO . '/u', $s, $m);
-        return array_map(fn($x) => $this->cislo($x), $m[1]);
-    }
-
-    // ---------------------------------------------------------------- generace 2
-
-    private function radekG2(string $r, string $mena): ?TransactionDTO {
-        if (!preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4}) \d{1,2}:\d{2}\s*(.*)$/su', $r, $m)) return null;
-        $datum = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
-        $zbytek = $m[4];
-
-        $isin = preg_match('/\b([A-Z]{2}[A-Z0-9]{9}\d)\b/', $zbytek, $mi) ? $mi[1] : null;
-
-        // Množství a Objem jsou první dvě čísla za názvem (a případným ISIN).
-        $cisla = $this->cisla($zbytek);
-        if (count($cisla) < 2) return null;
-        $mnozstvi = $cisla[0];
-        $objem = $cisla[1];
-
-        // Název je text před prvním číslem, bez ISIN.
-        $nazev = preg_split('/' . self::CISLO . '/u', $zbytek)[0];
-        if ($isin) $nazev = str_replace($isin, '', $nazev);
-        $nazev = trim($nazev);
-
-        // Distribuce/odebrání práv volitelné dividendy a „Ukončení CP v CDCP“ jsou
-        // účetní kroky volitelné dividendy — připíšou a zase odepíšou práva
-        // (CHO CTP N.V.). Kdyby se importovaly, vznikly by v portfoliu fiktivní
-        // pozice; samotná dividenda přijde vlastním řádkem.
-        if (preg_match('/Distribuce práv|Odebrání práv|Ukončení CP/ui', $zbytek)) return null;
-
-        // Pozor na pořadí: „Poplatek za připsání dividend“ obsahuje slovo dividend,
-        // takže test na poplatek musí být dřív, jinak se z poplatku stane dividenda
-        // s tickerem odvozeným z textu poplatku.
-        if (preg_match('/\bPoplatek\b/ui', $zbytek)) {
-            // U poplatku je částka poslední číslo řádku (Poplatky a náklady),
-            // Objem bývá nula.
-            $castka = abs((float)end($cisla));
-            return $this->dto('FEE', $datum, null, null, 0.0, $castka, $mena, $castka, $zbytek);
-        }
-
-        if (preg_match('/\b(Nákup|Prodej)\b/u', $zbytek, $mo, PREG_OFFSET_CAPTURE)) {
-            // Řádek, kde je „papírem“ kód měny, je převod mezi měnami účtu.
-            if (in_array(strtoupper($nazev), self::MENY, true)) return null;
-            $ocas = substr($zbytek, $mo[0][1] + strlen($mo[0][0]));
-            $cOcas = $this->cisla($ocas);
-            $cena = $cOcas[0] ?? 0.0;
-            // Poslední číslo je Podíl PNO (v procentech), poplatek je to před ním.
-            $poplatek = count($cOcas) >= 3 ? (float)$cOcas[count($cOcas) - 2] : 0.0;
-            return $this->dto(
-                strcasecmp($mo[1][0], 'Prodej') === 0 ? 'SELL' : 'BUY',
-                $datum, $nazev, $isin, abs((float)$mnozstvi), abs((float)$objem), $mena, abs($poplatek), $zbytek
-            );
-        }
-
-        // Emisní ážio vyplácí emitent místo dividendy (O2 to dělá pravidelně) —
-        // pro držitele je to stejný peněžní výnos.
-        if (preg_match('/\bDividend|emisního ážia/ui', $zbytek)) {
-            // Dividenda v akciích má množství a nulový objem — to je připsání kusů.
-            if ((float)$mnozstvi > 0 && (float)$objem == 0.0) {
-                return $this->dto('REVENUE', $datum, $nazev, $isin, abs((float)$mnozstvi), 0.0, $mena, 0.0, $zbytek);
-            }
-            return $this->dto('DIVIDEND', $datum, $nazev, $isin, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-
-        if (preg_match('/Bezhotovostní vklad|Vloženo na účet/ui', $zbytek)) {
-            return $this->dto('DEPOSIT', $datum, null, null, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-        if (preg_match('/Bezhotovostní výběr|Výběr z účtu/ui', $zbytek)) {
-            return $this->dto('WITHDRAWAL', $datum, null, null, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-
-        // Ukončení CP v CDCP, Finanční kompenzace, Převod… — vyžadují posouzení,
-        // radši je nevymýšlet.
-        return null;
+    private function jeCislo(string $s): bool {
+        return (bool)preg_match('/^-?\d[\d ]*,\d+\s*%?$/u', trim($s));
     }
 
     // ---------------------------------------------------------------- generace 1
 
-    private function radekG1(string $r, string $mena): ?TransactionDTO {
-        // DATUM ČAS | Objem | Poplatky | Cena | Množství | zbytek (Směr Trh Název)
-        $vzor = '/^(\d{2})\.(\d{2})\.\'(\d{2}) \d{1,2}:\d{2}\s+'
-              . '(-?[\d ]+,\d+)\s+(-?[\d ]+,\d+)\s+(-?[\d ]+,\d+)\s+(-?[\d ]+,\d+)\s*(.*)$/su';
-        if (!preg_match($vzor, $r, $m)) return null;
+    /**
+     * Jeden řádek, na konci čtyři čísla: Množství, Cena, Poplatky, Objem.
+     * Text mezi datem a prvním číslem drží Název, Směr, Trh a Poznámku.
+     */
+    private function blokG1(array $blok, string $mena): ?TransactionDTO {
+        $sl = $this->sloupce($blok[0]);
+        if (count($sl) < 5) return null;
+        if (!preg_match('/^(\d{2})\.(\d{2})\.\'(\d{2})/u', $sl[0], $md)) return null;
+        $datum = sprintf('20%02d-%02d-%02d', $md[3], $md[2], $md[1]);
 
-        $datum = sprintf('20%02d-%02d-%02d', $m[3], $m[2], $m[1]);
-        $objem    = $this->cislo($m[4]);
-        $poplatek = $this->cislo($m[5]);
-        $mnozstvi = $this->cislo($m[7]);
-        $zbytek   = trim($m[8]);
+        // Čtyři koncová čísla.
+        $cisla = [];
+        while (count($sl) > 1 && count($cisla) < 4 && $this->jeCislo(end($sl))) {
+            array_unshift($cisla, $this->cislo(array_pop($sl)));
+        }
+        if (count($cisla) < 4) return null;
+        [$mnozstvi, $cena, $poplatek, $objem] = $cisla;
 
-        if (preg_match('/^(Nákup|Prodej)\s+(\S+)\s+(?:K\s+)?(.*)$/us', $zbytek, $mo)) {
-            $nazev = trim($mo[3]);
-            if (in_array(strtoupper($nazev), self::MENY, true)) return null; // převod měn
+        // Zbytek = popisné sloupce; zalomené pokračování je na dalších řádcích.
+        $popisne = array_slice($sl, 1);
+        $pokracovani = [];
+        foreach (array_slice($blok, 1) as $r) $pokracovani = array_merge($pokracovani, $this->sloupce($r));
+        $popis = trim(implode(' ', array_merge($popisne, $pokracovani)));
+
+        $nazev = $popisne[0] ?? '';
+        // Když je sloupec Název prázdný, první sloupec už je Směr nebo Poznámka.
+        // Kódy směru se musí porovnávat na CELÝ token: „KOMERČNÍ BANKA“ začíná na
+        // K a „PHILIP MORRIS“ na P, takže test na prefix by ty názvy zahodil.
+        if ($nazev === ''
+            || preg_match('/^(K|P|BCPP|RMS|VOLNY)$/u', $nazev)
+            || preg_match('/^(Nákup|Prodej|Poplatek|Převod|Vloženo|Výběr|BAA)/u', $nazev)) {
+            $nazev = '';
+        }
+
+        return $this->zPopisu($datum, $popis, $nazev, null, $mnozstvi, $cena, $poplatek, $objem, $mena);
+    }
+
+    // ---------------------------------------------------------------- generace 2
+
+    /**
+     * Blok řádků. První nese datum, název, ISIN, množství a objem; další pak
+     * vždy jednu hodnotu zarovnanou vpravo — jednotkovou cenu, poplatky, podíl.
+     */
+    private function blokG2(array $blok, string $mena): ?TransactionDTO {
+        $prvni = $this->sloupce($blok[0]);
+        if (!preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})/u', $prvni[0] ?? '', $md)) return null;
+        $datum = sprintf('%04d-%02d-%02d', $md[3], $md[2], $md[1]);
+
+        // Množství a Objem jsou dvě koncová čísla prvního řádku.
+        $ocas = [];
+        while (count($prvni) > 1 && count($ocas) < 2 && $this->jeCislo(end($prvni))) {
+            array_unshift($ocas, $this->cislo(array_pop($prvni)));
+        }
+        if (count($ocas) < 2) return null;
+        [$mnozstvi, $objem] = $ocas;
+
+        $isin = preg_match('/\b([A-Z]{2}[A-Z0-9]{9}\d)\b/', implode(' ', $prvni), $mi) ? $mi[1] : null;
+        $nazev = $prvni[1] ?? '';
+        if ($isin !== null && $nazev === $isin) $nazev = '';
+
+        // Zbylé řádky: číslo vpravo je hodnota, text vlevo její význam.
+        $cena = 0.0; $poplatek = 0.0; $popisDalsi = [];
+        $poradiCisel = [];
+        foreach (array_slice($blok, 1) as $r) {
+            $c = $this->sloupce($r);
+            if ($c === []) continue;
+            $hodnota = $this->jeCislo(end($c)) ? $this->cislo(end($c)) : null;
+            $text = $hodnota === null ? implode(' ', $c) : implode(' ', array_slice($c, 0, -1));
+            if (trim($text) !== '') $popisDalsi[] = trim($text);
+            if ($hodnota !== null && !str_contains(end($c), '%')) $poradiCisel[] = $hodnota;
+        }
+        // Pořadí je dané rozvržením: jednotková cena, pak poplatky.
+        $cena = $poradiCisel[0] ?? 0.0;
+        $poplatek = $poradiCisel[1] ?? 0.0;
+
+        $popis = trim($nazev . ' ' . implode(' ', $popisDalsi));
+        return $this->zPopisu($datum, $popis, $nazev, $isin, $mnozstvi, $cena, $poplatek, $objem, $mena);
+    }
+
+    // ---------------------------------------------------------------- společné
+
+    /** Z popisu určí typ operace a poskládá transakci. */
+    private function zPopisu(string $datum, string $popis, string $nazev, ?string $isin,
+                             ?float $mnozstvi, ?float $cena, ?float $poplatek, ?float $objem,
+                             string $mena): ?TransactionDTO {
+        $mnozstvi = abs((float)$mnozstvi);
+        $objem = abs((float)$objem);
+        $poplatek = abs((float)$poplatek);
+
+        if (preg_match(self::KORPORATNI, $popis)) return null;
+
+        // Poplatek musí předcházet dividendu: „Poplatek za připsání dividend“
+        // vyhoví oběma testům a jinak by se z poplatku stala dividenda.
+        if (preg_match('/\bPoplatek\b/ui', $popis)) {
+            $castka = $poplatek ?: $objem;
+            return $this->dto('FEE', $datum, null, null, 0.0, $castka, $mena, $castka, $popis);
+        }
+
+        if (preg_match('/Bezhotovostní vklad|Vloženo na účet/ui', $popis)) {
+            return $this->dto('DEPOSIT', $datum, null, null, 0.0, $objem, $mena, 0.0, $popis);
+        }
+        if (preg_match('/Bezhotovostní výběr|Výběr z účtu/ui', $popis)) {
+            return $this->dto('WITHDRAWAL', $datum, null, null, 0.0, $objem, $mena, 0.0, $popis);
+        }
+        // Převody mezi vlastními účty nejsou obchod ani pohyb pozice.
+        if (preg_match('/Převod (z|na) účtu/ui', $popis)) return null;
+
+        // Emisní ážio vyplácí emitent místo dividendy (O2) — pro držitele stejný výnos.
+        if (preg_match('/\bDividend|emisního ážia/ui', $popis)) {
+            if ($mnozstvi > 0 && $objem == 0.0) {
+                // Dividenda v akciích: připsané kusy, žádná hotovost.
+                return $this->dto('REVENUE', $datum, $nazev, $isin, $mnozstvi, 0.0, $mena, 0.0, $popis);
+            }
+            return $this->dto('DIVIDEND', $datum, $nazev, $isin, 0.0, $objem, $mena, 0.0, $popis);
+        }
+
+        if (preg_match('/\b(Nákup|Prodej)\b/u', $popis, $mo)) {
+            // Řádek, kde je „papírem“ kód měny, je převod mezi měnami účtu.
+            if (in_array(strtoupper(trim($nazev)), self::MENY, true)) return null;
+            if ($mnozstvi == 0.0) return null;
+            $castka = $objem ?: ($mnozstvi * (float)$cena);
             return $this->dto(
                 strcasecmp($mo[1], 'Prodej') === 0 ? 'SELL' : 'BUY',
-                $datum, $nazev, null, abs((float)$mnozstvi), abs((float)$objem), $mena, abs((float)$poplatek), $zbytek
+                $datum, $nazev, $isin, $mnozstvi, $castka, $mena, $poplatek, $popis
             );
         }
 
-        if (preg_match('/Distribuce práv|Odebrání práv|Ukončení CP/ui', $zbytek)) return null;
-
-        // Stejné pořadí jako v generaci 2: poplatek dřív než dividenda, protože
-        // „Poplatek za připsání dividend“ vyhoví oběma testům.
-        if (preg_match('/\bPoplatek\b/ui', $zbytek)) {
-            return $this->dto('FEE', $datum, null, null, 0.0, abs((float)$poplatek), $mena, abs((float)$poplatek), $zbytek);
-        }
-
-        if (preg_match('/\bDividend|emisního ážia/ui', $zbytek)) {
-            // Název papíru stojí až za závorkou s poznámkou o zdanění.
-            $nazev = preg_match('/\)\s*(.+)$/us', $zbytek, $mn) ? trim($mn[1]) : $zbytek;
-            return $this->dto('DIVIDEND', $datum, $nazev, null, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-
-        if (preg_match('/Bezhotovostní vklad|Vloženo na účet/ui', $zbytek)) {
-            return $this->dto('DEPOSIT', $datum, null, null, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-        if (preg_match('/Bezhotovostní výběr|Výběr z účtu/ui', $zbytek)) {
-            return $this->dto('WITHDRAWAL', $datum, null, null, 0.0, abs((float)$objem), $mena, 0.0, $zbytek);
-        }
-
         return null;
     }
-
-    // ---------------------------------------------------------------- pomocné
 
     /**
      * Ticker podle ISIN, jinak podle názvu. Když se nepodaří, vrátí očištěný
-     * název a do metadat se zapíše, že mapování chybí — ať je vidět, co doplnit
-     * do tabulky, místo aby transakce tiše zmizela.
+     * název a do metadat zapíše, že mapování chybí — ať je vidět, co doplnit.
      */
     private function ticker(?string $nazev, ?string $isin, array &$meta): ?string {
         if ($isin && isset(self::ISIN_TICKER[$isin])) return self::ISIN_TICKER[$isin];
-        if ($nazev) {
-            $n = mb_strtoupper(trim($nazev), 'UTF-8');
-            foreach (self::NAZEV_TICKER as $klic => $tick) {
-                if (str_starts_with($n, $klic)) return $tick;
-            }
-            $meta['ticker_nenamapovan'] = $nazev;
-            if ($isin) $meta['isin'] = $isin;
-            $slug = preg_replace('/[^A-Z0-9]/', '', $this->bezDiakritiky($n));
-            return $slug !== '' ? substr($slug, 0, 20) : null;
+        $n = mb_strtoupper(trim((string)$nazev), 'UTF-8');
+        if ($n === '') return null;
+        foreach (self::NAZEV_TICKER as $klic => $tick) {
+            if (str_starts_with($n, $klic)) return $tick;
         }
-        return null;
+        $meta['ticker_nenamapovan'] = $nazev;
+        if ($isin) $meta['isin'] = $isin;
+        $slug = preg_replace('/[^A-Z0-9]/', '', $this->bezDiakritiky($n));
+        return $slug !== '' ? substr($slug, 0, 20) : null;
     }
 
     private function bezDiakritiky(string $s): string {
-        $z = ['Á'=>'A','Č'=>'C','Ď'=>'D','É'=>'E','Ě'=>'E','Í'=>'I','Ň'=>'N','Ó'=>'O','Ř'=>'R',
-              'Š'=>'S','Ť'=>'T','Ú'=>'U','Ů'=>'U','Ý'=>'Y','Ž'=>'Z'];
-        return strtr($s, $z);
+        return strtr($s, ['Á'=>'A','Č'=>'C','Ď'=>'D','É'=>'E','Ě'=>'E','Í'=>'I','Ň'=>'N',
+                          'Ó'=>'O','Ř'=>'R','Š'=>'S','Ť'=>'T','Ú'=>'U','Ů'=>'U','Ý'=>'Y','Ž'=>'Z']);
     }
 
     private function dto(string $typ, string $datum, ?string $nazev, ?string $isin,
-                         float $mnozstvi, float $castka, string $mena, float $poplatek, string $raw): TransactionDTO {
-        $meta = ['nazev' => $nazev, 'raw' => mb_substr(trim($raw), 0, 180)];
+                         float $mnozstvi, float $castka, string $mena, float $poplatek,
+                         string $popis): TransactionDTO {
+        $meta = ['nazev' => $nazev, 'popis' => mb_substr(trim($popis), 0, 180)];
         if ($isin) $meta['isin'] = $isin;
 
         $t = new TransactionDTO();
         $t->type = $typ;
         $t->date = $datum;
-        $t->ticker = in_array($typ, ['DEPOSIT', 'WITHDRAWAL'], true) ? null : $this->ticker($nazev, $isin, $meta);
+        // Hotovostní pohyby nemají papír; ticker doplní import podle měny,
+        // sloupec `ticker` je v databázi NOT NULL.
+        $t->ticker = in_array($typ, ['DEPOSIT', 'WITHDRAWAL', 'FEE'], true)
+            ? null : $this->ticker($nazev, $isin, $meta);
         $t->quantity = $mnozstvi;
         $t->pricePerUnit = $mnozstvi > 0 ? abs($castka / $mnozstvi) : 0.0;
         $t->currency = $mena;
@@ -325,12 +335,11 @@ class FioPdfParser extends AbstractParser {
         $t->totalAmount = $castka;
         $t->source_broker = 'Fio';
         $t->metadata = $meta;
-        // Do otisku patří i samotný řádek: generace 2 v něm nese „ID operace“,
-        // takže dva jinak shodné zápisy (dvě stejné dividendy téhož dne) zůstanou
-        // rozlišitelné a druhý se nezahodí jako duplicita.
+        // Popis je součástí otisku: generace 2 v něm nese ID operace, takže dvě
+        // jinak shodné dividendy téhož dne zůstanou rozlišitelné.
         $t->brokerTradeId = 'FIO_' . md5(implode('|', [
             $datum, (string)$t->ticker, $typ, $mnozstvi, $castka, $mena, $poplatek,
-            preg_replace('/\s+/u', ' ', trim($raw)),
+            preg_replace('/\s+/u', ' ', trim($popis)),
         ]));
         return $t;
     }

@@ -264,9 +264,43 @@ try {
                         $price = abs($price);
                     }
                     
+                    /*
+                     * Hotovostní pohyby (vklad, výběr, poplatek, daň) se neváží
+                     * k žádnému papíru, takže parsery u nich ticker nevyplňují —
+                     * jenže sloupec `ticker` je v databázi NOT NULL a celý import
+                     * na tom spadl s "null value in column ticker".
+                     *
+                     * Doplníme zástupný kód podle měny (konvence `CASH_CZK`, kterou
+                     * už zná import-handler) a hlavně srovnáme `product_type`:
+                     * Cash/Fee/Tax api-portfolio.php přeskakuje, takže se z vkladu
+                     * nestane fiktivní pozice v portfoliu.
+                     */
+                    $typUpper = strtoupper(trim((string)($data['type'] ?? '')));
+                    $menaKod = strtoupper(trim((string)($data['currency'] ?? 'CZK'))) ?: 'CZK';
+                    if (trim((string)($data['ticker'] ?? '')) === '') {
+                        $zastupne = [
+                            'DEPOSIT'    => ['CASH_' . $menaKod, 'Cash'],
+                            'WITHDRAWAL' => ['CASH_' . $menaKod, 'Cash'],
+                            'FEE'        => ['FEE_' . $menaKod,  'Fee'],
+                            'TAX'        => ['TAX_' . $menaKod,  'Tax'],
+                        ];
+                        if (isset($zastupne[$typUpper])) {
+                            [$data['ticker'], $productType] = $zastupne[$typUpper];
+                        } else {
+                            // Papírová transakce bez tickeru by v portfoliu nadělala
+                            // víc škody než užitku — radši ji přeskočit a spočítat.
+                            $skipped++;
+                            continue;
+                        }
+                    } elseif (isset(['DEPOSIT' => 1, 'WITHDRAWAL' => 1][$typUpper])) {
+                        $productType = 'Cash';
+                    } elseif ($typUpper === 'FEE') {
+                        $productType = 'Fee';
+                    }
+
                     // Prevent double json encoding of metadata
                     $metadataVal = is_string($data['metadata']) ? $data['metadata'] : json_encode($data['metadata']);
-                    
+
                     // Map possible values to table columns
                     $columnMapping = [
                         // Legacy columns
