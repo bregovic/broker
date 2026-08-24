@@ -159,6 +159,11 @@ class ImportManager {
         });
 
         foreach ($allRules as $rule) {
+            // A rule can only apply to a file its parser can actually read. Without this
+            // an .xlsx or .xml file matches a PDF rule on its filename and the parser
+            // chews through binary garbage instead of the import failing cleanly.
+            if (!$this->parserFitsFile($rule['parser_class'] ?? '', $filename)) continue;
+
             $isMatch = false;
 
             // 1. Check content regex (high priority)
@@ -181,6 +186,18 @@ class ImportManager {
         }
 
         return null;
+    }
+
+    /**
+     * The Pdf\* parsers expect text extracted from a PDF, the Csv\* parsers expect
+     * delimited text. Anything else (xlsx, xml, htm) has no parser and should fail
+     * discovery rather than be handed to one that cannot read it.
+     */
+    private function parserFitsFile(string $parserClass, string $filename): bool {
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (strpos($parserClass, '\\Pdf\\') !== false) return $ext === 'pdf';
+        if (strpos($parserClass, '\\Csv\\') !== false) return in_array($ext, ['csv', 'txt', 'tsv'], true);
+        return true;
     }
 
     /**

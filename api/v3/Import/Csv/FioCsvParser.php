@@ -31,10 +31,10 @@ class FioCsvParser extends AbstractCsvParser {
             $dto->date = $row[1]; // Předpokládáme Datum
             $dto->ticker = $row[3]; // Předpokládáme Symbol/ISIN
             $dto->type = $this->detectType($row[2]); // Rozdíl mezi nákupem/prodejem
-            $dto->quantity = $this->cleanNumber($row[5]);
-            $dto->pricePerUnit = $this->cleanNumber($row[6]);
+            $dto->quantity = $this->parseNumber($row[5]);
+            $dto->pricePerUnit = $this->parseNumber($row[6]);
             $dto->currency = $row[7] ?? 'CZK';
-            $dto->totalAmount = $this->cleanNumber($row[8] ?? 0);
+            $dto->totalAmount = $this->parseNumber($row[8] ?? 0);
             $dto->brokerTradeId = $row[0]; //ID pokynu
             $dto->source_broker = "Fio";
 

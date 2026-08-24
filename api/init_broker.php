@@ -92,15 +92,18 @@ try {
         ['revolut_commodity_pdf', 'Revolut Commodity (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutCommodityPdfParser',
             'commodit(y|ies)-account-statement|revolut.*commodit',
             'Výpis v\\s*' . $cs . '|Sm[ěĕ]něno na\\s*' . $cs . '|Exchanged to\\s*' . $cs, 10],
+        // Activity Statement only. IBKR's "Transaction History" export (U…TRANSACTIONS….csv)
+        // is a different layout that IbkrCsvParser cannot read — it must not be claimed here,
+        // or the import silently reports success with zero transactions.
         ['ibkr_activity_csv', 'Interactive Brokers (Activity CSV)', 'Broker\\V3\\Import\\Csv\\IbkrCsvParser',
-            '\\.TRANSACTIONS\\..*\\.csv|U\\d{6,}.*\\.csv',
-            'Statement,Header,.*Interactive Brokers|Trades,Header,.*DataDiscriminator', 20],
+            'U\\d{6,}_\\d{4}_\\d{4}\\.csv',
+            'Trades,Header,.*DataDiscriminator', 20],
         ['ibkr_pdf', 'Interactive Brokers (PDF)', 'Broker\\V3\\Import\\Pdf\\IbkrPdfParser',
             'ibkr',
             'Interactive Brokers|TransactionsCZK|Time Period:', 30],
-        ['fio_csv', 'Fio banka (CSV)', 'Broker\\V3\\Import\\Csv\\FioCsvParser',
-            'fio.*\\.csv',
-            'Fio banka|ID transakce', 30],
+        // No fio_csv rule on purpose: FioCsvParser is still an unfinished stub with a
+        // placeholder column mapping, so registering it would only route files into a
+        // parser that cannot handle them. Add the rule once the parser is real.
         ['revolut_trading_pdf', 'Revolut Trading (PDF)', 'Broker\\V3\\Import\\Pdf\\RevolutTradingPdfParser',
             '^(revolut.*)?trading-account-statement|^account-statement',
             'Transakce v (USD|EUR|CZK)|(USD|EUR|CZK) Transactions|Obchod\\s*[-–]\\s*(Market|Limit|Tržní|Limitní)|Trade\\s*[-–]\\s*(Market|Limit)', 90]

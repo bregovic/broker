@@ -56,6 +56,12 @@ class IbkrCsvParser extends AbstractParser {
             }
             if ($typRadku !== 'Data' || !isset($hlavicky[$sekce])) continue;
 
+            // IBKR mixes subtotals into the data rows of every section and labels them
+            // in the first data cell ("Total", "Total in CZK", "Total Deposits &
+            // Withdrawals in CZK"). Without this they import as real transactions —
+            // phantom deposits, dividends and fees, each counted a second time.
+            if (preg_match('/^Total\b/i', trim($bunky[2] ?? ''))) continue;
+
             $r = $this->naPole($hlavicky[$sekce], array_slice($bunky, 2));
 
             switch ($sekce) {

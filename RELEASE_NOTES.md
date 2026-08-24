@@ -1,5 +1,38 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (c)
+### Audit of all 58 sample statements — and the fallout
+Ran every file in the statement archive through real rule discovery + the real parser
+classes. Result before: 24 hard fatals, several files parsed as binary garbage.
+Result after: **0 fatals, nothing silently mis-parsed**.
+
+- **Regression fixed (introduced earlier today)**: the `fio_csv` rule added to the seed
+  matched Fio **PDF** statements on `Fio banka|ID transakce` and handed 33 of them to
+  `FioCsvParser` → fatal. The rule is removed again: `FioCsvParser` is an unfinished
+  stub with a placeholder column mapping, so it should not be registered at all.
+- `FioCsvParser` called `$this->cleanNumber()`, which does not exist (`parseNumber` does)
+  — it would have fataled on a real Fio CSV too. Fixed, but the column mapping is still
+  a placeholder, so the parser stays unregistered.
+- **Discovery now respects the file type.** `ImportManager` only offers a `Pdf\*` parser
+  a `.pdf` and a `Csv\*` parser a `.csv/.txt/.tsv`. Without it, `.xlsx`, `.xml` and `.htm`
+  files matched rules on their filename and parsers churned through binary content
+  (one `.xml` produced 26 868 PHP warnings). Those files now fail discovery cleanly.
+- **`IbkrCsvParser` imported IBKR's subtotal rows as transactions.** IBKR mixes subtotals
+  into the data rows of every section, labelled in the first data cell (`Total`,
+  `Total in CZK`, `Total Deposits & Withdrawals in CZK`). On the 2024 statement that was
+  10 phantom rows — 4 fake deposits (~60 000 CZK), plus double-counted dividends, tax and
+  fees. Now skipped; the file goes from 84 rows to a correct 74.
+- **`ibkr_activity_csv` no longer claims `U…TRANSACTIONS….csv`.** That is IBKR's
+  *Transaction History* export, a different layout `IbkrCsvParser` cannot read — it was
+  matching on filename and reporting a successful import of zero transactions. The rule is
+  now scoped to the Activity Statement (`U<acct>_<year>_<year>.csv` / the `DataDiscriminator`
+  header). Transaction History files now fail discovery honestly until a parser exists.
+
+### Known gaps confirmed by the audit (no parser exists)
+Coinbase (csv/htm/pdf) · eToro (pdf/xlsx) · Revolut consolidated statements (3 files) ·
+Revolut crypto/commodity **CSV** · Fio **PDF** (33 files) · all `.xlsx` · IBKR Transaction
+History CSV. `IbkrPdfParser` returns 0 transactions on 2 of the 3 IBKR PDFs.
+
 ## [Unreleased] - 2026-08-24 (b)
 ### Fixed — Revolut crypto & commodity imports never ran at all
 Verified by replaying rule discovery against the real statements in `example/`:
