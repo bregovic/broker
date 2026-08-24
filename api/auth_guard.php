@@ -19,6 +19,30 @@ if (!function_exists('api_is_cli')) {
         return PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
     }
 
+    /**
+     * Je soubor, který si o kontrolu řekl, skutečně tím, na co přišel požadavek?
+     *
+     * Některé „endpointy“ zároveň slouží jako knihovna — `setup_dividend_db.php`
+     * si vtahuje `ajax-fetch-history.php`, `ajax_import_ticker.php`,
+     * `api-dividend-comparison.php`, `googlefinanceservice.php` i `v3/install-db.php`.
+     * Kontrola v takovém souboru pak shodila i běžný požadavek, který s údržbou
+     * nemá nic společného: stahování cen začalo obyčejnému uživateli vracet
+     * „vyžaduje roli admin“ a nově naimportované tickery zůstaly bez ceny.
+     *
+     * Hlídáme proto jen přímé volání přes HTTP. Vtažení jako knihovna projde —
+     * kontrolu už udělal ten skript, na který požadavek doopravdy přišel.
+     */
+    function api_je_vstupni_bod(): bool {
+        // Rámec 0 nese soubor, ze kterého se require_login()/require_admin() volá.
+        $stopa = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1);
+        $volajici = $stopa[0]['file'] ?? '';
+        $vstup = $_SERVER['SCRIPT_FILENAME'] ?? '';
+        if ($volajici === '' || $vstup === '') return true;   // neurčité → raději hlídat
+        $a = realpath($volajici);
+        $b = realpath($vstup);
+        return $a === false || $b === false || $a === $b;
+    }
+
     function api_start_session(): void {
         if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_NONE) {
             @session_start();
@@ -58,7 +82,7 @@ if (!function_exists('api_is_cli')) {
      * `user_id`, jinak by přihlášený viděl cizí data.
      */
     function require_login(): int {
-        if (api_is_cli()) return 0;
+        if (api_is_cli() || !api_je_vstupni_bod()) return 0;
         $id = api_current_user_id();
         if ($id > 0) return $id;
         api_deny(401, 'Unauthorized');
@@ -66,7 +90,7 @@ if (!function_exists('api_is_cli')) {
 
     /** Vyžaduje roli admin. Údržba a zásahy do schématu. */
     function require_admin(): int {
-        if (api_is_cli()) return 0;
+        if (api_is_cli() || !api_je_vstupni_bod()) return 0;
         $id = api_current_user_id();
         api_start_session();
         $role = strtolower(trim((string)($_SESSION['role'] ?? '')));

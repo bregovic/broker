@@ -1,5 +1,23 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (k)
+### Fixed — zavření endpointů rozbilo stahování cen (regrese)
+Nově naimportované tickery zůstávaly bez ceny, takže Bilance ukazovala míň, než
+kolik portfolio doopravdy má. Na účtu s eToro chyběly ceny u NWL, VNO a XLK —
+dohromady zhruba 1 470 USD, tedy celý rozdíl proti hodnotě, kterou hlásí eToro.
+
+Příčina byla v mé vlastní bezpečnostní úpravě. `setup_dividend_db.php` není jen
+údržbový skript, ale zároveň **knihovna, kterou si vtahuje pět dalších souborů** —
+`ajax-fetch-history.php`, `ajax_import_ticker.php`, `api-dividend-comparison.php`,
+`googlefinanceservice.php` a `v3/install-db.php`. Jakmile v něm byl `require_admin()`,
+shodil i běžný požadavek: stahování cen začalo obyčejnému uživateli vracet
+„Forbidden: vyžaduje roli admin“.
+
+`auth_guard.php` proto nově hlídá **jen přímé volání přes HTTP**. Když je soubor
+vtažený jako knihovna, kontrola se přeskočí — tu už udělal skript, na který
+požadavek doopravdy přišel. Ověřeno v obou směrech: přímý požadavek na chráněný
+soubor se blokuje, vtažení jako knihovna projde.
+
 ## [Unreleased] - 2026-08-24 (j)
 ### Added — filtr služeb (brokerů) na přehledových stránkách
 Přehledy míchají všechny brokery dohromady, takže se z nich nedalo vyčíst, jak si
