@@ -1,5 +1,35 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24 (h)
+### Added — Coinbase (CSV) parser
+Roční exporty z Coinbase dosud neměly parser. Soubor má pár úvodních řádků a teprve
+pak hlavičku `ID,Timestamp,Transaction Type,Asset,Quantity Transacted,…`; částky nesou
+symbol měny (`Kč16233.43638`, `-Kč24741.93908`) a měna je vlastní sloupec.
+
+- **Převody nejsou obchod, ale pozici mění.** `Pro Withdrawal` je příchod kryptoměny
+  z Coinbase Pro — ve vzorku přinesl **1,2299 BTC**, které se pak postupně prodalo.
+  Kdyby se přeskočil jako „ne-obchod“, chybělo by v portfoliu přesně tolik. Bere se
+  proto jako nákup v hodnotě, kterou výpis uvádí, a v metadatech je označený
+  (`prevod`) — skutečnou pořizovací cenu z Coinbase Pro tenhle export neobsahuje.
+- `Exchange Deposit` / `Exchange Withdrawal` (přesun mezi Coinbase a Coinbase Pro,
+  27 řádků) se přeskakují. Vklady a výběry ve fiat měně jdou jako hotovost bez
+  tickeru, takže z nich import udělá `CASH_EUR` a portfolio je ignoruje.
+- Otisk se staví na `ID` z výpisu, ne na hashi hodnot.
+- Ověřeno na všech 9 ročních souborech (2018–2026): **52 transakcí**, žádná kolize
+  otisků, a výsledná pozice **0,31676066 BTC** sedí přesně na součet, který uvádí
+  sám Coinbase.
+
+### Stav na kompletní sadě výpisů (43 souborů, srpen 2026)
+Rozpoznáno a zpracováno 31 souborů, 10 je prázdných (roky bez obchodů), nula
+fatálních chyb. Nerozpoznané zůstávají už jen **dva soubory eToro** (PDF a XLSX),
+pro které parser neexistuje. Napříč 4112 transakcemi ze všech parserů nepřijde
+bez tickeru nic než hotovostní pohyby a poplatky, které import doplní sám.
+
+> K dotazu na **BAAPILLE**: prohledal jsem všechny Fio výpisy na disku, dump staré
+> databáze i produkční data. Pilulka se nevyskytuje nikde. Burzovní kódy ve všech
+> Fio výpisech jsou pouze BAACEZ, BAACTP, BAACZGCE, BAAERBAG, BAAKOMB, BAATABAK
+> a BAATELEC.
+
 ## [Unreleased] - 2026-08-24 (g)
 ### Fixed — import padal na NOT NULL u `ticker`, Fio generace 1 nenašla nic
 Dvě chyby nahlášené z produkce po prvním ostrém importu.
