@@ -59,16 +59,18 @@ interface PortfolioItem {
     currency: string;
     platform: string;
     net_qty: number;
-    avg_cost_czk: number;
-    avg_cost_orig: number;
+    avg_cost_czk: number | null;
+    // Null when the position mixes cost currencies (grouping by ticker across platforms),
+    // so the original-currency view has no single meaning.
+    avg_cost_orig: number | null;
     current_price: number;
     current_value_czk: number;
     total_cost_czk: number;
     unrealized_czk: number;
     unrealized_pct: number;
-    unrealized_orig: number;
-    unrealized_pct_orig: number;
-    fx_pnl_czk: number;
+    unrealized_orig: number | null;
+    unrealized_pct_orig: number | null;
+    fx_pnl_czk: number | null;
 }
 
 interface PortfolioSummary {
@@ -199,7 +201,8 @@ export const BalancePage = () => {
         },
         {
             columnId: 'unrealized_orig', renderHeaderCell: () => t('col_pnl_orig'), renderCell: (item: PortfolioItem) => {
-                const val = item.unrealized_orig != null ? Number(item.unrealized_orig) : 0;
+                if (item.unrealized_orig == null) return '—';
+                const val = Number(item.unrealized_orig);
                 return (
                     <Text className={val >= 0 ? styles.positive : styles.negative}>
                         {val > 0 ? '+' : ''}{val.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -210,7 +213,8 @@ export const BalancePage = () => {
         },
         {
             columnId: 'unrealized_pct_orig', renderHeaderCell: () => t('col_pnl_pct_orig'), renderCell: (item: PortfolioItem) => {
-                const val = item.unrealized_pct_orig != null ? Number(item.unrealized_pct_orig) : 0;
+                if (item.unrealized_pct_orig == null) return '—';
+                const val = Number(item.unrealized_pct_orig);
                 return (
                     <Text className={val >= 0 ? styles.positive : styles.negative}>
                         {val.toFixed(2)} %
@@ -221,7 +225,8 @@ export const BalancePage = () => {
         },
         {
             columnId: 'fx_pnl_czk', renderHeaderCell: () => t('col_fx_pnl'), renderCell: (item: PortfolioItem) => {
-                const val = item.fx_pnl_czk != null ? Number(item.fx_pnl_czk) : 0;
+                if (item.fx_pnl_czk == null) return '—';
+                const val = Number(item.fx_pnl_czk);
                 return (
                     <Text className={val >= 0 ? styles.positive : styles.negative}>
                         {val.toLocaleString(undefined, { maximumFractionDigits: 0 })}

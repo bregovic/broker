@@ -1,5 +1,32 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-24
+### Fixed — Balance: 4 columns were dead (Avg cost / P&L orig / P&L % orig / FX P&L)
+- `BalancePage.tsx` rendered `avg_cost_orig`, `unrealized_orig`, `unrealized_pct_orig`
+  and `fx_pnl_czk`, but `api-portfolio.php` never emitted those fields → the columns
+  showed `-` / `0` / `0.00 %` / `0` for every position. `total_cost_orig` was already
+  being accumulated in the aggregation and then silently discarded.
+- `api-portfolio.php` now computes them (plus `avg_cost_czk`):
+  - `avg_cost_orig = total_cost_orig / net_qty`
+  - `unrealized_orig = (current_price_in_cost_currency - avg_cost_orig) * net_qty`
+  - `fx_pnl_czk = unrealized_czk - unrealized_orig * current_rate` — i.e. the CZK
+    result minus the price move valued at today's rate, so what's left is the
+    currency move on the cost basis.
+- **Cost basis unified on one source.** `total_cost_orig` now derives from
+  `amount_cur` (was `amount * price`). Since `amount_czk = amount_cur * ex_rate`, the
+  original-currency and CZK cost bases can no longer disagree and the FX split is
+  exact. Fees are therefore counted exactly as the broker booked them into the
+  transaction amount and are *not* added on top — matching `api-pnl.php`, which
+  keeps `fees` as a separate term in the realized result. `amount * price` remains
+  as a fallback for parsers that leave `amount_cur` empty.
+- **Quote currency is now respected.** `live_quotes.currency` was selected but never
+  used: the current price was converted with the *transaction* currency's rate. IBKR
+  books US stocks in CZK, so those positions were valued with rate 1 on a USD price.
+  The quote's own currency is used when a rate exists for it, else the old fallback.
+- Positions that mix cost currencies (grouping by ticker across platforms) return
+  `null` for the original-currency columns instead of a meaningless number; the grid
+  renders `—`.
+
 ## [Unreleased] - 2026-05-29
 ### Fixed — `trans_type` case mismatch (Dividends & P&L were empty)
 - Production data stores `trans_type` in UPPERCASE (`DIVIDEND`, `BUY`, `SELL`),
