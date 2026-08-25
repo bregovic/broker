@@ -1,5 +1,26 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-25 (b)
+### Fixed — kolize tickerů u pražské burzy (GEV = GEVORKYAN vs GE Vernova)
+`live_quotes` mělo pod tickerem **GEV** uloženou GE Vernova z NYSE za 942 USD
+místo GEVORKYAN z Prahy za 186 Kč — včetně názvu společnosti a ATH.
+
+`fetchFromYahoo()` zkouší seznam kandidátů (holý ticker, `.DE`, `.L`, `.PA`,
+`.AS`). Pražský symbol se sice zkoušel první, ale když dotaz na `GEV.PR` selhal,
+smyčka pokračovala na holé `GEV` a uložila úplně jiný papír. U tickeru, o kterém
+z mapy víme, že je pražský, je teď seznam **omezený na ten jediný symbol** —
+špatná cena je horší než žádná.
+
+### Poznámka — Yahoo pro pražskou burzu stačí
+Ověřeno živě: ceny v CZK, čas kotace 16:15 SEČ (prakticky závěr), a hlavně
+**hluboká historie** — ČEZ 6751 denních záznamů až do roku 2000, KOMB/TABAK/MONET
+/ERBAG přes 1250 za posledních 5 let. Historie se dosud netahala jen proto, že
+stahování cen blokovala chyba v kontrole přístupu (opraveno dříve).
+
+Omezení, která zůstávají: `COLT.PR` má historii až od dubna 2026 (Colt CZ měnil
+symbol) a stooq.com jako alternativa nepřipadá v úvahu — je za bot ochranou.
+Oficiální API burzy (pse.cz) se nepodařilo dohledat.
+
 ## [Unreleased] - 2026-08-25
 ### Fixed — Fio: dvojí započítání obchodů z překrývajících se výpisů
 Kdo naimportoval roční i čtvrtletní výpis za totéž období, dostal některé obchody

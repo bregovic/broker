@@ -868,11 +868,16 @@ class GoogleFinanceService
             $candidates = array_merge($candidates, $customMap[$ticker]);
         }
 
-        // Pražská burza má vlastní symboly (a ne vždy jen s příponou .PR) — zkusit
-        // je jako první, jinak by se ticker jako CZG nebo CTP marně hledal na US trhu.
+        /*
+         * Pražská burza má vlastní symboly (a ne vždy jen s příponou .PR).
+         * U známého českého papíru se ostatní varianty zkoušet NESMÍ: kdyby
+         * dotaz na `GEV.PR` selhal, smyčka by sáhla po holém `GEV` a uložila
+         * GE Vernova z NYSE za 942 USD místo GEVORKYAN za 186 Kč. Špatná cena
+         * je horší než žádná, takže je seznam omezený na jediný symbol.
+         */
         require_once __DIR__ . '/ticker_symbols.php';
         $cz = bcpp_yahoo_symbol($ticker);
-        if ($cz !== null) array_unshift($candidates, $cz);
+        if ($cz !== null) $candidates = [$cz];
 
         foreach ($candidates as $yTicker) {
             // First try fetching detailed quote using the cookie/crumb handshake
