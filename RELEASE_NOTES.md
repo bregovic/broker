@@ -1,5 +1,26 @@
 # Broker 2.0 - Development History & Release Notes
 
+## [Unreleased] - 2026-08-25 (c)
+### Fixed — špatná měna u pražské kotace nadhodnotila portfolio 24×
+CTP se ocenilo na **2 364 817 Kč** místo ~98 000. Yahoo u `CTPNV.PR` hlásí měnu
+**EUR**, protože primární listing CTP je v Amsterdamu — cena 349,20 je přitom
+v korunách. Protože `api-portfolio.php` podle uložené měny přepočítává, prohnalo
+se 281 kusů kurzem eura.
+
+U papíru, o kterém z mapy víme, že je z pražské burzy, se měna nově **vynucuje na
+CZK** (`bcpp_mena()`), a to v obou zápisových cestách — `ajax-fetch-history.php`
+i `googlefinanceservice.php`. Ověřeno živě u všech 31 tickerů z mapy: kotace
+jsou v CZK.
+
+### Fixed — cena se brala jen z dotazu, který bývá blokovaný
+Papír mohl mít historii, ATH i burzu, ale cenu nula. Zápis ceny byl vnořený jen
+do větve s v7 dotazem, který Yahoo bez crumbu často odmítne — komentář přímo
+v kódu to přiznával. Pražské symboly na to narážely pokaždé: `GEV.PR` vrátilo
+1024 dnů historie a ATH 284 Kč, ale cena zůstala 0.
+
+Cena i měna se teď berou rovnou z metadat grafu, které chodí zdarma a bez crumbu;
+v7 dotaz je pak už jen zpřesní o denní změnu a fundamenty.
+
 ## [Unreleased] - 2026-08-25 (b)
 ### Fixed — kolize tickerů u pražské burzy (GEV = GEVORKYAN vs GE Vernova)
 `live_quotes` mělo pod tickerem **GEV** uloženou GE Vernova z NYSE za 942 USD

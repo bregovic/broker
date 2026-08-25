@@ -43,6 +43,19 @@ if (!function_exists('bcpp_yahoo_symbol')) {
         return BCPP_YAHOO[strtoupper(trim($ticker))] ?? null;
     }
 
+    /**
+     * Měna kotace pro papír z pražské burzy — vždy CZK.
+     *
+     * Zdroji se v tomhle nedá věřit: Yahoo hlásí u `CTPNV.PR` měnu EUR, protože
+     * primární listing CTP je v Amsterdamu, ačkoli cena 349,20 je v korunách.
+     * Protože `api-portfolio.php` podle měny přepočítává, ocenilo se 281 kusů
+     * na 2 364 817 Kč místo 98 000 — přesně kurzem eura. Ověřeno živě u všech
+     * 31 tickerů z mapy: kotace jsou v CZK.
+     */
+    function bcpp_mena(string $ticker): ?string {
+        return bcpp_yahoo_symbol($ticker) !== null ? 'CZK' : null;
+    }
+
     /** True pro papíry, u kterých víme, že cenu nedohledáme. */
     function bcpp_bez_zdroje(string $ticker): bool {
         return in_array(strtoupper(trim($ticker)), BCPP_BEZ_ZDROJE, true);

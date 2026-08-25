@@ -315,6 +315,8 @@ try {
             $exMeta = $yahooData['meta']['fullExchangeName'] ?? $yahooData['meta']['exchangeName'] ?? '';
             $cenaMeta = (float)($yahooData['meta']['regularMarketPrice'] ?? 0) * $factor;
             $menaMeta = strtoupper(trim((string)($yahooData['meta']['currency'] ?? '')));
+            // U papiru z prazske burzy je mena vzdy CZK, at zdroj hlasi cokoli.
+            $menaMeta = bcpp_mena($originalTicker) ?? $menaMeta;
             if ($exMeta !== '' || $cenaMeta > 0) {
                 try {
                     $pdo->prepare(
@@ -356,6 +358,7 @@ try {
                     // kurzem měny nákupu, což u IBKR (účtuje v CZK) sedělo jen náhodou.
                     $qCur = strtoupper(trim((string)($qRes['currency']
                         ?? $yahooData['meta']['currency'] ?? '')));
+                    $qCur = bcpp_mena($originalTicker) ?? $qCur;
 
                     // Update live_quotes
                     $sqlLQ = "UPDATE live_quotes SET

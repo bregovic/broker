@@ -286,7 +286,9 @@ class GoogleFinanceService
         $changePercent = $this->parseNumber($data['change_percent'] ?? null);
         
         // Check if we have transactions with a different currency - transactions are source of truth
-        $fetchedCurrency = $data['currency'] ?? 'USD';
+        require_once __DIR__ . '/ticker_symbols.php';
+        // Prazsky papir ma kotaci v CZK i kdyz Yahoo hlasi menu primarniho listingu.
+        $fetchedCurrency = bcpp_mena($tickerId ?? '') ?? ($data['currency'] ?? 'USD');
         $finalCurrency = $fetchedCurrency;
         
         try {
