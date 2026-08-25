@@ -466,6 +466,9 @@ try {
             try {
                 require_once __DIR__ . '/cost_basis.php';
                 $zaklady = \dopocitat_porizovaci_ceny($db, $userId);
+                // Totéž pro dividendy vyplacené v akciích — výpis u nich žádnou
+                // částku neuvádí, ocení se kurzem v den připsání.
+                $zaklady['dividendy_v_akciich'] = \ocenit_dividendy_v_akciich($db, $userId);
             } catch (Throwable $e) {
                 $zaklady = ['chyba' => $e->getMessage()];
             }
