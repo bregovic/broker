@@ -8,7 +8,9 @@ import {
     Spinner,
     Badge,
     Toolbar,
-    ToolbarButton
+    ToolbarButton,
+    MessageBar,
+    MessageBarBody
 } from '@fluentui/react-components';
 import { ArrowSync24Regular } from "@fluentui/react-icons";
 import axios from 'axios';
@@ -35,8 +37,12 @@ interface PnLItem {
     profit_czk: number;
     fx_czk: number;
     fees_czk: number;
+    /** Poplatek + spread, tedy co obchod doopravdy stál. */
+    execution_cost_czk?: number;
     net_profit_czk: number;
     tax_test: boolean;
+    /** KNOWN | ODVOZENY | UNKNOWN — jak jistá je pořizovací cena. */
+    basis_status?: string;
     holding_days: number;
     platform: string;
     currency: string;
@@ -46,13 +52,21 @@ interface PnLStats {
     net_profit: number;
     realized_profit: number;
     realized_loss: number;
-    fx_total: number;
+    /** Před poplatky — karty „ziskové/ztrátové obchody“ jsou popsané jako hrubé. */
+    gross_profit: number;
+    gross_loss: number;
+    fx_total: number | null;
+    /** U výpisů vedených rovnou v korunách kurzový pohyb z dat vyčíst nejde. */
+    fx_znamy?: boolean;
     fees_total: number;
+    execution_cost_total: number;
     tax_free_profit: number;
     taxable_profit: number;
     winning: number;
     losing: number;
     total_count: number;
+    basis_odvozeny?: number;
+    basis_unknown?: number;
 }
 
 export const PnLPage = () => {
@@ -90,14 +104,19 @@ export const PnLPage = () => {
         const net_profit = filteredData.reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
         const realized_profit = filteredData.filter(i => (i.net_profit_czk || 0) >= 0).reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
         const realized_loss = filteredData.filter(i => (i.net_profit_czk || 0) < 0).reduce((sum, i) => sum + Math.abs(i.net_profit_czk || 0), 0);
+        // Karty „ziskové/ztrátové obchody“ jsou popsané jako hrubé, takže se
+        // musí počítat z hrubého zisku — dřív ukazovaly totéž co čistý výsledek.
+        const gross_profit = filteredData.filter(i => (i.profit_czk || 0) >= 0).reduce((sum, i) => sum + (i.profit_czk || 0), 0);
+        const gross_loss = filteredData.filter(i => (i.profit_czk || 0) < 0).reduce((sum, i) => sum + Math.abs(i.profit_czk || 0), 0);
         const fx_total = filteredData.reduce((sum, i) => sum + (i.fx_czk || 0), 0);
         const fees_total = filteredData.reduce((sum, i) => sum + (i.fees_czk || 0), 0);
+        const execution_cost_total = filteredData.reduce((sum, i) => sum + (i.execution_cost_czk || 0), 0);
         const tax_free_profit = filteredData.filter(i => i.tax_test).reduce((sum, i) => sum + (i.net_profit_czk || 0), 0);
         const winning = filteredData.filter(i => (i.net_profit_czk || 0) >= 0).length;
         const losing = filteredData.filter(i => (i.net_profit_czk || 0) < 0).length;
 
         setStats(prev => {
-            const current = prev || { net_profit: 0, realized_profit: 0, realized_loss: 0, fx_total: 0, fees_total: 0, tax_free_profit: 0, taxable_profit: 0, winning: 0, losing: 0, total_count: 0 };
+            const current = prev || { net_profit: 0, realized_profit: 0, realized_loss: 0, gross_profit: 0, gross_loss: 0, fx_total: 0, fees_total: 0, execution_cost_total: 0, tax_free_profit: 0, taxable_profit: 0, winning: 0, losing: 0, total_count: 0 };
             // Check for equality to prevent infinite loop
             if (
                 Math.abs(current.net_profit - net_profit) < 0.01 &&
@@ -114,8 +133,11 @@ export const PnLPage = () => {
                 net_profit,
                 realized_profit,
                 realized_loss,
+                gross_profit,
+                gross_loss,
                 fx_total,
                 fees_total,
+                execution_cost_total,
                 tax_free_profit,
                 winning,
                 losing,
@@ -217,28 +239,45 @@ export const PnLPage = () => {
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_winning')}</div>
                             <div className={`${styles.statValue} ${styles.positive}`}>
-                                +{stats.realized_profit?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                +{(stats.gross_profit ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
                             </div>
                             <Text size={200}>{stats.winning} {t('trades_count')}</Text>
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_losing')}</div>
                             <div className={`${styles.statValue} ${styles.negative}`}>
-                                -{stats.realized_loss?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                -{(stats.gross_loss ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
                             </div>
                             <Text size={200}>{stats.losing} {t('trades_count')}</Text>
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_fx') || 'Kurzový rozdíl'}</div>
-                            <div className={`${styles.statValue} ${(stats.fx_total || 0) >= 0 ? styles.positive : styles.negative}`}>
-                                {(stats.fx_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
-                            </div>
+                            {/* Nula by tvrdila, že kurz stál. Když je obchod veden rovnou
+                                v korunách, pohyb měny z výpisu prostě nezjistíme. */}
+                            {stats.fx_znamy === false ? (
+                                <>
+                                    <div className={styles.statValue}>—</div>
+                                    <Text size={200}>{t('pnl_fx_unknown') || 'nelze určit z výpisu'}</Text>
+                                </>
+                            ) : (
+                                <div className={`${styles.statValue} ${(stats.fx_total || 0) >= 0 ? styles.positive : styles.negative}`}>
+                                    {(stats.fx_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                </div>
+                            )}
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_fees') || 'Poplatky'}</div>
+                            {/* Vykázaný poplatek nemusí být celý náklad obchodu — u Coinbase
+                                je v rozdílu Subtotal/Total ještě spread. */}
                             <div className={`${styles.statValue} ${styles.negative}`}>
-                                {(stats.fees_total || 0) > 0 ? '-' : ''}{(stats.fees_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                {((stats.fees_total || 0) + (stats.execution_cost_total || 0)) > 0 ? '-' : ''}
+                                {((stats.fees_total || 0) + (stats.execution_cost_total || 0)).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
                             </div>
+                            {(stats.execution_cost_total || 0) > 0 && (
+                                <Text size={200}>
+                                    {t('pnl_incl_spread') || 'včetně spreadu'} {(stats.execution_cost_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
+                                </Text>
+                            )}
                         </Card>
                         <Card className={styles.statCard}>
                             <div className={styles.statLabel}>{t('pnl_tax_free')}</div>
@@ -247,6 +286,19 @@ export const PnLPage = () => {
                             </div>
                         </Card>
                     </div>
+                )}
+
+                {/* Pozice převedená z jiného účtu nemá ve výpisu pořizovací cenu.
+                    Dopočítáváme ji z peněz poslaných na burzu — je to odhad a
+                    nemá se tvářit jako hotová věc. */}
+                {stats && ((stats.basis_odvozeny || 0) > 0 || (stats.basis_unknown || 0) > 0) && (
+                    <MessageBar intent={(stats.basis_unknown || 0) > 0 ? 'warning' : 'info'}>
+                        <MessageBarBody>
+                            {(stats.basis_unknown || 0) > 0
+                                ? `U ${stats.basis_unknown} obchodů neznáme pořizovací cenu (chybí historie z původního účtu) — zisk u nich není průkazný.`
+                                : `U ${stats.basis_odvozeny} obchodů je pořizovací cena odvozená z peněz poslaných na burzu, ne z konkrétních nákupů.`}
+                        </MessageBarBody>
+                    </MessageBar>
                 )}
 
                 <div className={styles.tableContainer} style={{ flex: 1, minHeight: 0 }}>

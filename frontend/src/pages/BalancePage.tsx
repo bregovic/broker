@@ -9,7 +9,9 @@ import {
     Toolbar,
     ToolbarButton,
     Dropdown,
-    Option
+    Option,
+    MessageBar,
+    MessageBarBody
 } from "@fluentui/react-components";
 import { ArrowClockwise24Regular, GroupList24Regular } from "@fluentui/react-icons";
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -65,6 +67,12 @@ interface PortfolioItem {
     // so the original-currency view has no single meaning.
     avg_cost_orig: number | null;
     current_price: number;
+    /** Měna kotace — nemusí být stejná jako měna nákupu (BTC: nákup v CZK, kotace v EUR). */
+    current_price_currency?: string;
+    /** KNOWN | UNAVAILABLE — bez ceny se pozice ocenit nedá. */
+    price_status?: string;
+    /** KNOWN | ODVOZENY | UNKNOWN — jak jistá je pořizovací cena. */
+    basis_status?: string;
     current_value_czk: number;
     total_cost_czk: number;
     unrealized_czk: number;
@@ -79,6 +87,10 @@ interface PortfolioSummary {
     total_cost_czk: number;
     total_unrealized_czk: number;
     count: number;
+    /** Kvalita dat — kolik pozic stojí na odhadu nebo se vůbec nedá ocenit. */
+    basis_odvozeny?: number;
+    basis_unknown?: number;
+    bez_ceny?: number;
 }
 
 export const BalancePage = () => {
@@ -189,11 +201,17 @@ export const BalancePage = () => {
             compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.net_qty) - Number(b.net_qty)
         },
         {
-            columnId: 'avg_cost_orig', renderHeaderCell: () => t('col_avg_cost_orig'), renderCell: (item: PortfolioItem) => item.avg_cost_orig != null ? Number(item.avg_cost_orig).toFixed(2) : '-',
+            // Průměrná cena je v měně nákupu, aktuální cena v měně kotace. Bez
+            // popisku vedle sebe stály dva nesouměřitelné sloupce (BTC: 455 165
+            // Kč vs 78 632 USD) a vypadaly jako propad ceny.
+            columnId: 'avg_cost_orig', renderHeaderCell: () => t('col_avg_cost_orig'), renderCell: (item: PortfolioItem) => item.avg_cost_orig != null ? `${Number(item.avg_cost_orig).toFixed(2)} ${item.currency || ''}`.trim() : '-',
             compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.avg_cost_orig) - Number(b.avg_cost_orig)
         },
         {
-            columnId: 'current_price', renderHeaderCell: () => t('col_curr_price'), renderCell: (item: PortfolioItem) => item.current_price != null ? Number(item.current_price).toFixed(2) : '-',
+            columnId: 'current_price', renderHeaderCell: () => t('col_curr_price'),
+            renderCell: (item: PortfolioItem) => item.price_status === 'UNAVAILABLE' || !Number(item.current_price)
+                ? <Text italic>{t('price_unavailable') || 'cena není'}</Text>
+                : <>{`${Number(item.current_price).toFixed(2)} ${item.current_price_currency || ''}`.trim()}</>,
             compare: (a: PortfolioItem, b: PortfolioItem) => Number(a.current_price) - Number(b.current_price)
         },
         {
@@ -313,6 +331,26 @@ export const BalancePage = () => {
                             <div className={styles.statValue}>{summary.count}</div>
                         </Card>
                     </div>
+                )}
+
+                {/* Pozice převedená z jiného účtu nemá ve výpisu pořizovací cenu;
+                    dopočítává se z peněz poslaných na burzu. Ať je to vidět. */}
+                {summary && ((summary.basis_odvozeny || 0) > 0 || (summary.basis_unknown || 0) > 0 || (summary.bez_ceny || 0) > 0) && (
+                    <MessageBar intent={(summary.basis_unknown || 0) > 0 ? 'warning' : 'info'}>
+                        <MessageBarBody>
+                            {[
+                                (summary.basis_unknown || 0) > 0
+                                    ? `${summary.basis_unknown} pozic bez známé pořizovací ceny (chybí historie z původního účtu)`
+                                    : null,
+                                (summary.basis_odvozeny || 0) > 0
+                                    ? `${summary.basis_odvozeny} pozic má pořizovací cenu odvozenou z peněz poslaných na burzu`
+                                    : null,
+                                (summary.bez_ceny || 0) > 0
+                                    ? `${summary.bez_ceny} pozic nemá aktuální cenu, takže se nedají ocenit`
+                                    : null,
+                            ].filter(Boolean).join(' · ')}
+                        </MessageBarBody>
+                    </MessageBar>
                 )}
 
                 <div className={styles.tableContainer} style={{ maxHeight: 'calc(100vh - 350px)' }}>

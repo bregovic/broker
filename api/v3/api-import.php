@@ -283,6 +283,10 @@ try {
                             'WITHDRAWAL' => ['CASH_' . $menaKod, 'Cash'],
                             'FEE'        => ['FEE_' . $menaKod,  'Fee'],
                             'TAX'        => ['TAX_' . $menaKod,  'Tax'],
+                            // Přesun peněz mezi vlastními účty u téhož brokera.
+                            // Do cashflow ani do portfolia nepatří, ale bez něj
+                            // nejde dopočítat pořizovací cenu převedené pozice.
+                            'INTERNAL'   => ['CASH_' . $menaKod, 'Internal'],
                         ];
                         if (isset($zastupne[$typUpper])) {
                             [$data['ticker'], $productType] = $zastupne[$typUpper];
@@ -452,7 +456,25 @@ try {
                 }
             }
             
-            echo json_encode(['success' => true, 'summary' => $summary], JSON_INVALID_UTF8_SUBSTITUTE);
+            /*
+             * Převedené pozice (např. BTC z Coinbase Pro) přišly bez pořizovací
+             * ceny. Ta se dá odvodit až z celé historie účtu, ne z jednoho
+             * souboru, takže se dopočítává tady — po commitu, nad vším, co
+             * uživatel do téhle chvíle naimportoval.
+             */
+            $zaklady = [];
+            try {
+                require_once __DIR__ . '/cost_basis.php';
+                $zaklady = \dopocitat_porizovaci_ceny($db, $userId);
+            } catch (Throwable $e) {
+                $zaklady = ['chyba' => $e->getMessage()];
+            }
+
+            echo json_encode([
+                'success' => true,
+                'summary' => $summary,
+                'porizovaci_ceny' => $zaklady,
+            ], JSON_INVALID_UTF8_SUBSTITUTE);
 
         } catch (Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();

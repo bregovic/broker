@@ -14,18 +14,34 @@ use Broker\V3\Import\TransactionDTO;
  *
  * Částky mají před sebou symbol měny („Kč16233.43638“, „-Kč24741.93908“) a jsou
  * v anglickém formátu s tečkou; měna je vlastní sloupec `Price Currency`.
- * Ukládá se `Subtotal` (hodnota obchodu) a poplatek zvlášť — stejně jako
- * u ostatních parserů, aby `api-pnl.php` počítalo konzistentně.
  *
- * **Převody nejsou obchod, ale pozici mění.** `Pro Withdrawal` je příchod kryptoměny
- * z Coinbase Pro; ve vzorku přinesl 1,2299 BTC, které se pak postupně prodalo.
- * Kdyby se přeskočil, chybělo by v portfoliu přesně tolik. Bere se proto jako
- * nákup v hodnotě, kterou výpis uvádí — skutečnou pořizovací cenu z Coinbase Pro
- * tenhle výpis neobsahuje, takže je to nejbližší dostupný odhad a v metadatech
- * je to označené (`prevod` => true).
+ * ## Proč `Total` a ne `Subtotal`
  *
- * Přeskakuje se `Exchange Deposit` / `Exchange Withdrawal` — to je jen přesun
- * peněz mezi Coinbase a Coinbase Pro, ne pohyb pozice.
+ * Coinbase uvádí u obchodu tři čísla a **žádná dvě nesedí na třetí**. U prodeje
+ * 0,1 BTC z 21. 11. 2024 je Subtotal 231 968,45, Total 228 512,09 a vykázaný
+ * poplatek jen 2 343,15 — rozdíl 3 456,36 Kč tedy poplatek nevysvětluje celý,
+ * zbytek je spread. Kdybychom ukládali Subtotal a poplatek zvlášť, vyšel by nám
+ * čistý výnos 229 625 Kč, ačkoli na účet skutečně přišlo 228 512 Kč.
+ *
+ * Ukládá se proto `Total` — to je částka, která reálně odešla nebo přišla —
+ * a poplatek se už podruhé neodečítá (`fee = 0`). Rozklad na vykázaný poplatek,
+ * celkový execution cost a nevysvětlený zbytek zůstává v metadatech.
+ *
+ * ## Proč převod nesmí založit pořizovací cenu
+ *
+ * `Pro Withdrawal` z 30. 11. 2022 přinesl 1,22992676 BTC z Coinbase Pro. Výpis
+ * u něj uvádí tehdejší tržní hodnotu 485 670,87 Kč, jenže to je jen ocenění
+ * převodu — nakoupeno bylo dřív a jinde. Brát to jako nákup znamenalo ocenit
+ * bitcoin na 394 878 Kč/BTC, tedy zhruba dnem cyklického minima, a nadhodnotit
+ * realizovaný zisk roku 2024 o víc než 400 000 Kč.
+ *
+ * Převod se proto ukládá s nulovou pořizovací cenou a `basis_status = UNKNOWN`.
+ * Skutečnou cenu dopočítá `api/v3/cost_basis.php` z peněz poslaných na burzu;
+ * dokud se to nepovede, aplikace u té pozice zisk nevyčísluje.
+ *
+ * Interní přesuny peněz (`Exchange Deposit` / `Exchange Withdrawal`) se ukládají
+ * jako `INTERNAL` — nejsou to vklady zvenčí, ale právě ony prozrazují, kolik
+ * peněz na burzu odešlo, takže je dopočet pořizovací ceny potřebuje.
  */
 class CoinbaseCsvParser extends AbstractParser {
 
@@ -77,27 +93,34 @@ class CoinbaseCsvParser extends AbstractParser {
 
         $druh = trim($r['Transaction Type'] ?? '');
         $aktivum = strtoupper(trim($r['Asset'] ?? ''));
-        $mnozstvi = $this->cislo($r['Quantity Transacted'] ?? '');
+        $mnozstvi = abs((float)$this->cislo($r['Quantity Transacted'] ?? ''));
+        $zaporne = (float)$this->cislo($r['Quantity Transacted'] ?? '') < 0;
         $mena = strtoupper(trim($r['Price Currency'] ?? '')) ?: 'CZK';
-        $hodnota = abs((float)$this->cislo($r['Subtotal'] ?? ''));
-        if ($hodnota == 0.0) $hodnota = abs((float)$this->cislo($r['Total (inclusive of fees and/or spread)'] ?? ''));
-        $poplatek = abs((float)$this->cislo($r['Fees and/or Spread'] ?? ''));
         $fiat = in_array($aktivum, self::FIAT, true);
 
+        // Ekonomicky rozhoduje Total; Subtotal je hodnota před poplatkem a spreadem.
+        $subtotal = abs((float)$this->cislo($r['Subtotal'] ?? ''));
+        $total    = abs((float)$this->cislo($r['Total (inclusive of fees and/or spread)'] ?? ''));
+        $hodnota  = $total > 0 ? $total : $subtotal;
+
         switch ($druh) {
-            case 'Exchange Deposit':      // přesun mezi Coinbase a Coinbase Pro
+            case 'Exchange Deposit':      // přesun peněz mezi Coinbase a Coinbase Pro
             case 'Exchange Withdrawal':
-                return null;
+                // Není to pohyb kapitálu zvenčí, ale bez něj nelze dopočítat
+                // pořizovací cenu kryptoměny, která se z burzy vrátila.
+                return $this->dto('INTERNAL', $datum, null, 0.0, $hodnota, $mena, $r,
+                    ['smer' => $zaporne ? 'na_burzu' : 'z_burzy']);
 
             case 'Buy':
-                return $this->dto('BUY', $datum, $aktivum, abs((float)$mnozstvi), $hodnota, $mena, $poplatek, $r);
+                return $this->dto('BUY', $datum, $aktivum, $mnozstvi, $hodnota, $mena, $r);
 
             case 'Sell':
-                return $this->dto('SELL', $datum, $aktivum, abs((float)$mnozstvi), $hodnota, $mena, $poplatek, $r);
+                return $this->dto('SELL', $datum, $aktivum, $mnozstvi, $hodnota, $mena, $r);
 
             case 'Retail Simple Price Improvement':
-                // Drobný dobropis připsaný v aktivu, ne nákup.
-                return $this->dto('REVENUE', $datum, $aktivum, abs((float)$mnozstvi), 0.0, $mena, 0.0, $r);
+                // Drobný dobropis připsaný v aktivu — vzniká skutečná pozice,
+                // takže i tady patří hodnota z výpisu, ne nula.
+                return $this->dto('REVENUE', $datum, $aktivum, $mnozstvi, $hodnota, $mena, $r);
 
             case 'Deposit':
             case 'Withdrawal':
@@ -107,12 +130,21 @@ class CoinbaseCsvParser extends AbstractParser {
             case 'Receive':
                 if ($fiat) {
                     // Hotovost: ticker nechává import doplnit jako CASH_<měna>.
-                    return $this->dto((float)$mnozstvi < 0 ? 'WITHDRAWAL' : 'DEPOSIT',
-                        $datum, null, 0.0, $hodnota, $mena, 0.0, $r);
+                    return $this->dto($zaporne ? 'WITHDRAWAL' : 'DEPOSIT',
+                        $datum, null, 0.0, $hodnota, $mena, $r);
                 }
-                // Převod kryptoměny mění pozici, i když to není obchod.
-                return $this->dto((float)$mnozstvi < 0 ? 'SELL' : 'BUY',
-                    $datum, $aktivum, abs((float)$mnozstvi), $hodnota, $mena, $poplatek, $r, true);
+                /*
+                 * Převod kryptoměny mění pozici, ale nezakládá pořizovací cenu —
+                 * ta zůstala u obchodu na zdrojovém účtu. Hodnota jde do metadat
+                 * jako tržní ocenění, do částky nula a stav `UNKNOWN`.
+                 */
+                return $this->dto($zaporne ? 'SELL' : 'BUY',
+                    $datum, $aktivum, $mnozstvi, 0.0, $mena, $r, [
+                        'prevod' => true,
+                        'flow_type' => 'INTERNAL',
+                        'basis_status' => 'UNKNOWN',
+                        'trzni_hodnota' => round($hodnota, 5),
+                    ]);
 
             default:
                 return null;
@@ -132,15 +164,25 @@ class CoinbaseCsvParser extends AbstractParser {
     }
 
     private function dto(string $typ, string $datum, ?string $ticker, float $mnozstvi,
-                         float $hodnota, string $mena, float $poplatek, array $r,
-                         bool $prevod = false): TransactionDTO {
-        $meta = [
+                         float $hodnota, string $mena, array $r, array $navic = []): TransactionDTO {
+
+        $subtotal = abs((float)$this->cislo($r['Subtotal'] ?? ''));
+        $total    = abs((float)$this->cislo($r['Total (inclusive of fees and/or spread)'] ?? ''));
+        $vykazany = abs((float)$this->cislo($r['Fees and/or Spread'] ?? ''));
+        // Co obchod doopravdy stál: rozdíl mezi hodnotou obchodu a tím, co se
+        // skutečně pohnulo na účtu. Vykázaný poplatek bývá jen jeho část.
+        $execution = ($subtotal > 0 && $total > 0) ? abs($subtotal - $total) : 0.0;
+
+        $meta = array_merge([
             'coinbase_typ' => $r['Transaction Type'] ?? '',
             'poznamka' => mb_substr(trim((string)($r['Notes'] ?? '')), 0, 140),
-        ];
-        // U převodu není v tomhle výpisu skutečná pořizovací cena; uložená hodnota
-        // je tržní v okamžiku převodu, což je odhad — ať je to v datech vidět.
-        if ($prevod) $meta['prevod'] = true;
+            'subtotal' => round($subtotal, 5),
+            'total' => round($total, 5),
+            'vykazany_poplatek' => round($vykazany, 5),
+            'execution_cost' => round($execution, 5),
+            'nevysvetleny_naklad' => round(max(0.0, $execution - $vykazany), 5),
+            'trzni_cena' => (float)($this->cislo($r['Price at Transaction'] ?? '') ?? 0),
+        ], $navic);
 
         $t = new TransactionDTO();
         $t->type = $typ;
@@ -149,7 +191,9 @@ class CoinbaseCsvParser extends AbstractParser {
         $t->quantity = $mnozstvi;
         $t->pricePerUnit = $mnozstvi > 0 ? abs($hodnota / $mnozstvi) : 0.0;
         $t->currency = $mena;
-        $t->fee = $poplatek;
+        // Částka už poplatek i spread obsahuje (viz komentář u třídy), takže se
+        // nesmí odečíst znovu. Rozpad je v metadatech.
+        $t->fee = 0.0;
         $t->totalAmount = $hodnota;
         $t->source_broker = 'Coinbase';
         $t->metadata = $meta;

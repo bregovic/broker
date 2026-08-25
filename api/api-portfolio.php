@@ -15,6 +15,14 @@ function resolveUserId() {
     return 0;
 }
 
+/** metadata jsou jsonb, starší řádky ale mohou nést text nebo null. */
+function portfolio_meta($hodnota): array {
+    if (is_array($hodnota)) return $hodnota;
+    if (!is_string($hodnota) || trim($hodnota) === '') return [];
+    $d = json_decode($hodnota, true);
+    return is_array($d) ? $d : [];
+}
+
 $userId = resolveUserId();
 if (!$userId) {
     echo json_encode(['success'=>false, 'error'=>'Unauthorized']);
@@ -62,7 +70,7 @@ try {
 
     // 3. Fetch Transactions
     try {
-        $sql="SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, platform, product_type, trans_type
+        $sql="SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, platform, product_type, trans_type, metadata
               FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
               WHERE tr.user_id = ? ORDER BY date ASC";
         $stmt = $pdo->prepare($sql);
@@ -78,7 +86,9 @@ try {
     foreach ($rows as $r) {
         $ticker = $r['ticker'];
         if(!$ticker) continue;
-        if (in_array($r['product_type'], ['Cash', 'Fee'])) continue; 
+        // `Internal` je přesun peněz mezi vlastními účty u téhož brokera —
+        // pozice to není, slouží jen k dopočtu pořizovací ceny převodů.
+        if (in_array($r['product_type'], ['Cash', 'Fee', 'Tax', 'Internal'])) continue;
 
         $key = ($groupBy === 'ticker') ? $ticker : ($ticker . '|' . $r['platform']);
 
@@ -90,7 +100,8 @@ try {
                 'net_qty' => 0.0,
                 'total_cost_czk' => 0.0,
                 'total_cost_orig' => 0.0,
-                'currencies' => []
+                'currencies' => [],
+                'basis_status' => 'KNOWN'
             ];
         }
         $g =& $groups[$key];
@@ -104,6 +115,13 @@ try {
         if ($amountCur <= 0) $amountCur = abs($amount * (float)$r['price']);
 
         if ($tt === 'buy' || $tt === 'revenue' || $tt === 'deposit') {
+            // Pozice převedená odjinud nezná cenu, za kterou byla pořízena;
+            // dokud ji `v3/cost_basis.php` neodvodí, nesmí se tvářit jako fakt.
+            $meta = portfolio_meta($r['metadata']);
+            $stav = strtoupper((string)($meta['basis_status'] ?? ''));
+            if ($stav === 'UNKNOWN') $g['basis_status'] = 'UNKNOWN';
+            elseif ($stav === 'ODVOZENY' && $g['basis_status'] === 'KNOWN') $g['basis_status'] = 'ODVOZENY';
+
             $g['net_qty'] += $amount;
             $g['total_cost_czk'] += abs($amountCzk);
             $g['total_cost_orig'] += $amountCur;
@@ -122,7 +140,9 @@ try {
     
     // 5. Finalize
     $finalList = [];
-    $summary = ['total_value_czk' => 0, 'total_cost_czk' => 0, 'total_unrealized_czk' => 0, 'count' => 0];
+    $summary = ['total_value_czk' => 0, 'total_cost_czk' => 0, 'total_unrealized_czk' => 0, 'count' => 0,
+                // Kvalita dat, ať přehled neukazuje odhad jako hotovou věc.
+                'basis_odvozeny' => 0, 'basis_unknown' => 0, 'bez_ceny' => 0];
     
     foreach ($groups as $g) {
         if ($g['net_qty'] <= 0.0001) continue;
@@ -143,6 +163,10 @@ try {
         if ($quoteRate <= 0) $quoteRate = 1;
 
         $g['current_price'] = $currentPrice;
+        // Aktuální cena je v měně kotace, průměrná cena v měně nákupu — u BTC
+        // to byly dva různé sloupce ve stejném popisku. Ať je měna u čísla.
+        $g['current_price_currency'] = $quoteCurrency ?? $costCurrency;
+        $g['price_status'] = $currentPrice > 0 ? 'KNOWN' : 'UNAVAILABLE';
         $g['current_price_czk'] = $currentPrice * $quoteRate;
         $g['current_value_czk'] = $g['net_qty'] * $g['current_price_czk'];
         $g['unrealized_czk'] = $g['current_value_czk'] - $g['total_cost_czk'];
@@ -174,6 +198,9 @@ try {
         $summary['total_cost_czk'] += $g['total_cost_czk'];
         $summary['total_unrealized_czk'] += $g['unrealized_czk'];
         $summary['count']++;
+        if ($g['basis_status'] === 'ODVOZENY') $summary['basis_odvozeny']++;
+        if ($g['basis_status'] === 'UNKNOWN')  $summary['basis_unknown']++;
+        if ($g['price_status'] === 'UNAVAILABLE') $summary['bez_ceny']++;
         $finalList[] = $g;
     }
     
