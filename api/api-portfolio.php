@@ -70,7 +70,7 @@ try {
 
     // 3. Fetch Transactions
     try {
-        $sql="SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, platform, product_type, trans_type, metadata
+        $sql="SELECT trans_id, date, COALESCE(a.canonical, tr.ticker) AS ticker, amount, price, ex_rate, currency, amount_cur, amount_czk, fees, platform, product_type, trans_type, metadata
               FROM transactions tr LEFT JOIN ticker_aliases a ON a.alias = tr.ticker
               WHERE tr.user_id = ? ORDER BY date ASC";
         $stmt = $pdo->prepare($sql);
@@ -122,9 +122,20 @@ try {
             if ($stav === 'UNKNOWN') $g['basis_status'] = 'UNKNOWN';
             elseif ($stav === 'ODVOZENY' && $g['basis_status'] === 'KNOWN') $g['basis_status'] = 'ODVOZENY';
 
+            /*
+             * Nákupní poplatek patří do pořizovací ceny — zaplatili jsme ho,
+             * abychom papír získali. Bilance ho dřív ignorovala (CTP mělo
+             * 111 552 místo 111 987, COLT 30 195 místo 30 310) a nerealizovaný
+             * zisk tím vycházel o ten poplatek vyšší. `api-pnl.php` s ním
+             * u realizovaných obchodů počítal odjakživa.
+             *
+             * Pozor u Coinbase: tam už částka poplatek i spread obsahuje a
+             * sloupec `fees` je proto nulový, takže se nic nezapočítá dvakrát.
+             */
+            $poplatek = abs((float)($r['fees'] ?? 0));
             $g['net_qty'] += $amount;
-            $g['total_cost_czk'] += abs($amountCzk);
-            $g['total_cost_orig'] += $amountCur;
+            $g['total_cost_czk'] += abs($amountCzk) + $poplatek * (float)($r['ex_rate'] ?: 1);
+            $g['total_cost_orig'] += $amountCur + $poplatek;
             if (!empty($r['currency'])) $g['currencies'][strtoupper($r['currency'])] = true;
         } elseif ($tt === 'sell' || $tt === 'withdrawal') {
             if ($g['net_qty'] > 0) {

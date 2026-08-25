@@ -141,6 +141,116 @@ if (!function_exists('dopocitat_porizovaci_ceny')) {
         ]);
     }
 
+    /**
+     * Ocení dividendy vyplacené v akciích.
+     *
+     * CTP vyplácí volitelnou dividendu: místo peněz přijdou na účet kusy akcií
+     * a výpis u nich neuvádí žádnou částku. V portfoliu pak ležely s nulovou
+     * pořizovací cenou (u tohohle účtu 27 kusů z celkových 276) a v dividendách
+     * nebyly vidět vůbec — přitom jde o příjem jako každý jiný.
+     *
+     * Ocení se kurzem v den připsání a ta částka slouží dvakrát: jako pořizovací
+     * cena nových kusů a zároveň jako dividendový příjem. Ekonomicky je to
+     * totéž, jako by přišla hotovost a hned se za ni akcie koupily — a právě
+     * proto se to nedvojí: co je příjem, je zároveň náklad pozice.
+     *
+     * @return array{radku:int,ocenenych:int,celkem_czk:float,bez_ceny:int}
+     */
+    function ocenit_dividendy_v_akciich(PDO $pdo, int $userId): array {
+        $stmt = $pdo->prepare(
+            "SELECT trans_id, date, ticker, amount, currency, ex_rate, platform,
+                    broker_trade_id, metadata
+             FROM transactions
+             WHERE user_id = ? AND UPPER(trans_type) = 'REVENUE' AND amount > 0
+               AND (metadata->>'dividenda_v_akciich' = 'true'
+                    OR (metadata->>'popis' ILIKE '%dividend%' AND metadata->>'popis' ILIKE '%(akcie)%'))
+             ORDER BY date"
+        );
+        $stmt->execute([$userId]);
+        $radky = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $shrnuti = ['radku' => count($radky), 'ocenenych' => 0, 'celkem_czk' => 0.0, 'bez_ceny' => 0];
+
+        foreach ($radky as $r) {
+            $meta = dekodovat_meta($r['metadata']);
+            $cena = historicka_cena($pdo, (string)$r['ticker'], (string)$r['date']);
+
+            if ($cena === null) {
+                $shrnuti['bez_ceny']++;
+                $meta['basis_status'] = 'UNKNOWN';
+                $meta['basis_poznamka'] = 'k datu připsání nemáme historickou cenu papíru';
+                $pdo->prepare("UPDATE transactions SET metadata = ? WHERE trans_id = ?")
+                    ->execute([json_encode($meta, JSON_UNESCAPED_UNICODE), (int)$r['trans_id']]);
+                continue;
+            }
+
+            $mnozstvi = abs((float)$r['amount']);
+            $kurz = (float)($r['ex_rate'] ?: 1);
+            $cur = $cena * $mnozstvi;          // v měně obchodu
+            $czk = $cur * $kurz;
+
+            $meta['basis_status'] = 'ODVOZENY';
+            $meta['basis_zdroj'] = 'trzni_cena_v_den_pripsani';
+            $meta['cena_v_den_pripsani'] = round($cena, 4);
+
+            $pdo->prepare(
+                "UPDATE transactions SET price = ?, amount_cur = ?, amount_czk = ?, metadata = ?
+                 WHERE trans_id = ?"
+            )->execute([
+                round($cena, 8), round($cur, 8), round($czk, 2),
+                json_encode($meta, JSON_UNESCAPED_UNICODE), (int)$r['trans_id'],
+            ]);
+
+            // Protějšek v dividendách. `api-dividends.php` bere `trans_type`
+            // DIVIDEND s nulovým množstvím, ať se z toho nestane druhá pozice.
+            $otisk = ($r['broker_trade_id'] ?: 'FIO_AKCDIV_' . $r['trans_id']) . ':div';
+            $uz = $pdo->prepare("SELECT 1 FROM transactions WHERE user_id = ? AND broker_trade_id = ?");
+            $uz->execute([$userId, $otisk]);
+            if (!$uz->fetchColumn()) {
+                $pdo->prepare(
+                    "INSERT INTO transactions
+                       (user_id, date, ticker, trans_type, amount, price, currency, fees,
+                        amount_czk, ex_rate, amount_cur, platform, product_type, broker_trade_id,
+                        transaction_date, type, quantity, price_per_unit, fee, total_amount,
+                        source_broker, metadata)
+                     VALUES (?,?,?,'DIVIDEND',0,0,?,0,?,?,?,?,'Stock',?,?,'DIVIDEND',0,0,0,?,?,?)"
+                )->execute([
+                    $userId, $r['date'], $r['ticker'], $r['currency'], round($czk, 2), $kurz,
+                    round($cur, 8), $r['platform'], $otisk, $r['date'], round($cur, 8),
+                    $r['platform'],
+                    json_encode([
+                        'nazev' => $meta['nazev'] ?? null,
+                        'popis' => 'Dividenda vyplacená v akciích, oceněná kurzem v den připsání',
+                        'dividenda_v_akciich' => true,
+                        'zdroj_radku' => (int)$r['trans_id'],
+                        'cena_v_den_pripsani' => round($cena, 4),
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            $shrnuti['ocenenych']++;
+            $shrnuti['celkem_czk'] += $czk;
+        }
+        $shrnuti['celkem_czk'] = round($shrnuti['celkem_czk'], 2);
+        return $shrnuti;
+    }
+
+    /**
+     * Závěrečná cena papíru k datu. Připsání často padne na den, kdy se
+     * neobchodovalo, proto se bere nejbližší předchozí kurz do týdne zpět.
+     */
+    function historicka_cena(PDO $pdo, string $ticker, string $datum): ?float {
+        $stmt = $pdo->prepare(
+            "SELECT price FROM tickers_history
+             WHERE ticker = ? AND history_date <= ? AND history_date >= ?::date - INTERVAL '7 days'
+               AND price > 0
+             ORDER BY history_date DESC LIMIT 1"
+        );
+        $stmt->execute([$ticker, $datum, $datum]);
+        $v = $stmt->fetchColumn();
+        return $v === false ? null : (float)$v;
+    }
+
     /** metadata jsou jsonb, ale starší řádky mohou nést i text nebo null. */
     function dekodovat_meta($hodnota): array {
         if (is_array($hodnota)) return $hodnota;

@@ -304,8 +304,15 @@ class FioPdfParser extends AbstractParser {
         // Emisní ážio vyplácí emitent místo dividendy (O2) — pro držitele stejný výnos.
         if (preg_match('/\bDividend|emisního ážia/ui', $popis)) {
             if ($mnozstvi > 0 && $objem == 0.0) {
-                // Dividenda v akciích: připsané kusy, žádná hotovost.
-                return $this->dto('REVENUE', $datum, $nazev, $isin, $mnozstvi, 0.0, $mena, 0.0, $popis);
+                /*
+                 * Dividenda v akciích (CTP vyplácí volitelnou dividendu): připsané
+                 * kusy, žádná hotovost. Výpis u nich žádnou částku neuvádí, takže
+                 * by v portfoliu ležely s nulovou pořizovací cenou a v dividendách
+                 * by nebyly vůbec. Ocení je `v3/cost_basis.php` kurzem toho dne;
+                 * příznak je tu proto, ať se to nemusí hádat z textu popisu.
+                 */
+                return $this->dto('REVENUE', $datum, $nazev, $isin, $mnozstvi, 0.0, $mena, 0.0, $popis,
+                    ['dividenda_v_akciich' => true, 'basis_status' => 'UNKNOWN']);
             }
             return $this->dto('DIVIDEND', $datum, $nazev, $isin, 0.0, $objem, $mena, 0.0, $popis);
         }
@@ -354,8 +361,8 @@ class FioPdfParser extends AbstractParser {
 
     private function dto(string $typ, string $datum, ?string $nazev, ?string $isin,
                          float $mnozstvi, float $castka, string $mena, float $poplatek,
-                         string $popis): TransactionDTO {
-        $meta = ['nazev' => $nazev, 'popis' => mb_substr(trim($popis), 0, 180)];
+                         string $popis, array $navic = []): TransactionDTO {
+        $meta = array_merge(['nazev' => $nazev, 'popis' => mb_substr(trim($popis), 0, 180)], $navic);
         if ($isin) $meta['isin'] = $isin;
 
         $t = new TransactionDTO();

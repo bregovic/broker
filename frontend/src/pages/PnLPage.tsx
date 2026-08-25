@@ -284,6 +284,11 @@ export const PnLPage = () => {
                             <div className={styles.statValue}>
                                 {stats.tax_free_profit?.toLocaleString(undefined, { maximumFractionDigits: 0 })} Kč
                             </div>
+                            {/* Nula tu mate: netýká se držených kusů, ale jen toho,
+                                co už bylo prodáno a v den prodeje test splňovalo. */}
+                            <Text size={200}>
+                                {t('pnl_tax_free_hint') || 'z prodaných, ne z držených'}
+                            </Text>
                         </Card>
                     </div>
                 )}
