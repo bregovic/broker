@@ -304,11 +304,33 @@ try {
             }
             $pdo->commit();
 
-            // Exchange comes free from the chart meta (no crumb needed, unlike the
-            // v7 quote below which is often blocked) — save it right away.
+            /*
+             * Z metadat grafu je zdarma i cena a měna — a to bez crumbu, který
+             * v7 dotaz níž často odmítne. Zapisujeme je proto rovnou jako základ;
+             * v7 je pak případně jen zpřesní o změnu za den a fundamenty.
+             *
+             * Bez toho zůstal papír bez ceny všude, kde v7 selhalo — což je právě
+             * případ pražských symbolů (`GEV.PR` mělo historii i ATH, ale cenu 0).
+             */
             $exMeta = $yahooData['meta']['fullExchangeName'] ?? $yahooData['meta']['exchangeName'] ?? '';
-            if ($exMeta !== '') {
-                try { $pdo->prepare("UPDATE live_quotes SET exchange = ? WHERE id = ?")->execute([$exMeta, $originalTicker]); } catch (Exception $e) {}
+            $cenaMeta = (float)($yahooData['meta']['regularMarketPrice'] ?? 0) * $factor;
+            $menaMeta = strtoupper(trim((string)($yahooData['meta']['currency'] ?? '')));
+            if ($exMeta !== '' || $cenaMeta > 0) {
+                try {
+                    $pdo->prepare(
+                        "UPDATE live_quotes SET
+                            exchange = COALESCE(NULLIF(:ex, ''), exchange),
+                            price = CASE WHEN :p > 0 THEN :p ELSE price END,
+                            current_price = CASE WHEN :p2 > 0 THEN :p2 ELSE current_price END,
+                            currency = COALESCE(NULLIF(:cur, ''), NULLIF(currency, ''), ''),
+                            source = CASE WHEN :p3 > 0 THEN 'yahoo' ELSE source END,
+                            last_fetched = NOW()
+                         WHERE id = :id"
+                    )->execute([
+                        ':ex' => $exMeta, ':p' => $cenaMeta, ':p2' => $cenaMeta,
+                        ':p3' => $cenaMeta, ':cur' => $menaMeta, ':id' => $originalTicker,
+                    ]);
+                } catch (Exception $e) {}
             }
 
             // 2. Fetch Fundamentals (v7 quote) to update live_quotes table
