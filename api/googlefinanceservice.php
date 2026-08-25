@@ -290,20 +290,38 @@ class GoogleFinanceService
         // Prazsky papir ma kotaci v CZK i kdyz Yahoo hlasi menu primarniho listingu.
         $fetchedCurrency = bcpp_mena($tickerId ?? '') ?? ($data['currency'] ?? 'USD');
         $finalCurrency = $fetchedCurrency;
-        
+
+        /*
+         * Měna z transakcí jako záloha, když ji zdroj nehlásí spolehlivě.
+         *
+         * Dřív to bylo `SELECT currency FROM transactions WHERE ticker = ? LIMIT 1`
+         * — tedy libovolný řádek bez řazení. CTP vyplácí dividendy v eurech, takže
+         * to trefilo EUR dividendu a kotace v korunách se uložila jako EUR;
+         * portfolio pak 281 kusů prohnalo kurzem eura a nadhodnotilo je 24×.
+         * Bereme proto jen skutečné obchody a z nich tu nejčastější měnu.
+         */
         try {
-            $stmtTx = $this->pdo->prepare("SELECT currency FROM transactions WHERE ticker = ? LIMIT 1");
+            $stmtTx = $this->pdo->prepare(
+                "SELECT currency, COUNT(*) AS pocet FROM transactions
+                 WHERE ticker = ? AND UPPER(trans_type) IN ('BUY', 'SELL')
+                   AND currency IS NOT NULL AND currency <> ''
+                 GROUP BY currency ORDER BY pocet DESC LIMIT 1"
+            );
             $stmtTx->execute([$tickerId]);
             $txCurrency = $stmtTx->fetchColumn();
-            
+
             if ($txCurrency && $txCurrency !== $fetchedCurrency) {
-                // Transaction currency takes priority
                 error_log("Currency override for $tickerId: fetched $fetchedCurrency, using transaction currency $txCurrency");
                 $finalCurrency = $txCurrency;
             }
         } catch (Exception $e) {
             // Ignore - might be a new ticker without transactions
         }
+
+        // Pražská burza kotuje v korunách — ověřený fakt, který přebíjí i transakce
+        // (ty u téhož papíru mohou být v jiné měně, viz eurové dividendy CTP).
+        $czkMena = bcpp_mena((string)$tickerId);
+        if ($czkMena !== null) $finalCurrency = $czkMena;
         
         if ($exists) {
             // UPDATE
