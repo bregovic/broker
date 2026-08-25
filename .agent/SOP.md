@@ -34,7 +34,14 @@ Read [`../CONTEXT_PROMPT.md`](../CONTEXT_PROMPT.md) first. This is the step-by-s
 
 ## 6. Verify
 - `cd frontend && npm run build` — **must pass** (`tsc -b && vite build`).
-- Sanity-check the affected endpoint/page locally if possible.
+- `php -l` every changed PHP file. A parse error only shows up as a 500 in production.
+- Touched a parser or anything that values a position? Check the result against the
+  **broker's own holdings table** in the statement (Fio „Portfolio CP", eToro Account
+  Summary, Coinbase asset balance). Closed positions must net to exactly zero;
+  a negative quantity means a statement is missing, not that the maths is wrong.
+- Endpoints read `$_SESSION`, so they can be run in CLI against real data by writing
+  a session file and setting `$_COOKIE[session_name()]` — see
+  [`OCENOVANI.md`](OCENOVANI.md) §7. That tests the shipped code, not a copy of it.
 
 ## 7. Ship
 - Update `RELEASE_NOTES.md`.

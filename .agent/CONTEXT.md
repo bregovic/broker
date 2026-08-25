@@ -30,6 +30,15 @@ Místo `if/else` bloků používáme **Factory + Strategy pattern**:
 - **Internal Database**: Přístupná přes `DATABASE_URL` zenv proměnných.
 - **Mapování**: Nginx přesměrovává `/api/*` na PHP soubory a zbytek na React dist.
 
+### 4. Oceňování a pořizovací cena
+Pravidla, na kterých stojí Bilance a P&L, jsou v [`OCENOVANI.md`](OCENOVANI.md).
+Než sáhneš na výpočet zisku, měny kotace nebo na parser korporátních akcí, přečti si to —
+většina těch pravidel vznikla z chyb, které v přehledech dělaly statisíce korun.
+
+Ve zkratce: pořizovací cenu smí založit jen skutečný nákup (ne převod, ne dividenda
+v akciích), poplatky do ní patří, měnu kotace určuje zdroj ceny a ne naše obchody,
+a co neznáme, se nesmí zobrazit jako nula.
+
 ## 🛠️ Pravidla pro vývoj:
 - **Nové funkce?** Vždy piš do složky `v3/` (Backend) a používej nové API.
 - **Nové tabulky?** Přidávej je do `install-db.php`, aby byly migrace automatické.
