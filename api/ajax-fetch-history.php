@@ -26,7 +26,10 @@ try {
     function mapTickerToYahoo($t) {
         $t = strtoupper(trim($t));
         // Common Cryptos for Yahoo
-        $cryptos = ['BTC'=>'BTC-USD', 'ETH'=>'ETH-USD', 'SOL'=>'SOL-USD', 'XRP'=>'XRP-USD', 'ADA'=>'ADA-USD', 'LTC'=>'LTC-USD'];
+        // EURC je stablecoin navázaný na euro; Yahoo ho vede jen proti dolaru
+        // (`EURC-EUR` neexistuje), takže se i on tahá jako `-USD`.
+        $cryptos = ['BTC'=>'BTC-USD', 'ETH'=>'ETH-USD', 'SOL'=>'SOL-USD', 'XRP'=>'XRP-USD',
+                    'ADA'=>'ADA-USD', 'LTC'=>'LTC-USD', 'DOGE'=>'DOGE-USD', 'EURC'=>'EURC-USD'];
         if (isset($cryptos[$t])) return $cryptos[$t];
         if ($t === 'BRK.B') return 'BRK-B';
         // Stocks Map

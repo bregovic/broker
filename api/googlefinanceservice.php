@@ -292,30 +292,31 @@ class GoogleFinanceService
         $finalCurrency = $fetchedCurrency;
 
         /*
-         * Měna z transakcí jako záloha, když ji zdroj nehlásí spolehlivě.
+         * Měna z transakcí slouží jen jako záloha, když ji zdroj vůbec nehlásí.
          *
-         * Dřív to bylo `SELECT currency FROM transactions WHERE ticker = ? LIMIT 1`
-         * — tedy libovolný řádek bez řazení. CTP vyplácí dividendy v eurech, takže
-         * to trefilo EUR dividendu a kotace v korunách se uložila jako EUR;
-         * portfolio pak 281 kusů prohnalo kurzem eura a nadhodnotilo je 24×.
-         * Bereme proto jen skutečné obchody a z nich tu nejčastější měnu.
+         * Dřív měna z obchodů kotaci přebíjela — jenže v jaké měně je cena, ví
+         * ten, kdo ji stáhl, ne naše účetnictví. Bitcoin se tahá jako `BTC-USD`,
+         * takže cena 79 105 je v dolarech; protože ale většina obchodů s ním
+         * proběhla u Coinbase v korunách, uložil se jako CZK a 0,317 BTC se
+         * v Bilanci ocenilo na 25 tisíc místo zhruba 520 tisíc.
+         *
+         * (Pražská burza je řešená výš přes `bcpp_mena()` — tam naopak zdroj
+         * hlásí měnu primárního listingu a mýlí se.)
          */
-        try {
-            $stmtTx = $this->pdo->prepare(
-                "SELECT currency, COUNT(*) AS pocet FROM transactions
-                 WHERE ticker = ? AND UPPER(trans_type) IN ('BUY', 'SELL')
-                   AND currency IS NOT NULL AND currency <> ''
-                 GROUP BY currency ORDER BY pocet DESC LIMIT 1"
-            );
-            $stmtTx->execute([$tickerId]);
-            $txCurrency = $stmtTx->fetchColumn();
-
-            if ($txCurrency && $txCurrency !== $fetchedCurrency) {
-                error_log("Currency override for $tickerId: fetched $fetchedCurrency, using transaction currency $txCurrency");
-                $finalCurrency = $txCurrency;
+        if (trim((string)$finalCurrency) === '') {
+            try {
+                $stmtTx = $this->pdo->prepare(
+                    "SELECT currency, COUNT(*) AS pocet FROM transactions
+                     WHERE ticker = ? AND UPPER(trans_type) IN ('BUY', 'SELL')
+                       AND currency IS NOT NULL AND currency <> ''
+                     GROUP BY currency ORDER BY pocet DESC LIMIT 1"
+                );
+                $stmtTx->execute([$tickerId]);
+                $txCurrency = $stmtTx->fetchColumn();
+                if ($txCurrency) $finalCurrency = $txCurrency;
+            } catch (Exception $e) {
+                // Ignore - might be a new ticker without transactions
             }
-        } catch (Exception $e) {
-            // Ignore - might be a new ticker without transactions
         }
 
         // Pražská burza kotuje v korunách — ověřený fakt, který přebíjí i transakce
@@ -570,7 +571,11 @@ class GoogleFinanceService
             'LTC' => 'litecoin',
             'BCH' => 'bitcoin-cash',
             'DOGE' => 'dogecoin',
-            'SHIB' => 'shiba-inu'
+            'SHIB' => 'shiba-inu',
+            // Stablecoin navázaný na euro, přistane na účtu jako dobropis
+            // („Retail Simple Price Improvement“) — bez téhle položky by pozice
+            // zůstala navždy bez ceny.
+            'EURC' => 'euro-coin'
         ];
 
         // Use heuristic if explicit type not provided
